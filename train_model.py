@@ -43,17 +43,19 @@ def upload_data(event, context):
     Returns the resource id it created."""
 
     # Read in relevant environment variables, and allow for local run
-    try:
+    if event.get('runlocal'):
+        print('Running local and using environment variable placeholders')
+        bucket_prefix = 'sagemaker/trainingfiles'
+        region = 'us-east-1'
+        stage = 'dev'
+        bucket = 'wibsie-ml3-sagebucket-' + stage
+        file_path = ''
+    else:
         bucket = os.environ['SAGE_BUCKET']
         bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
         region = os.environ['REGION']
         stage = os.environ['STAGE']
-    except:
-        print('Using environment variable placeholders')
-        bucket = 'wibsie-ml3-local-sagemaker-test'
-        bucket_prefix = 'sagemaker/trainingfiles'
-        region = 'us-east-1'
-        stage = 'dev'
+        file_path = '/tmp/'
 
     user_id = event['user_id']
     now_epoch = get_epoch_ms()
@@ -211,7 +213,7 @@ def upload_data(event, context):
     feature_columns = [l for l in results[0].keys() if l != label_column]
 
     data = pd.DataFrame(results)
-    return data
+    data.index.name = 'df_id'
 
     # Fill all Nones in precip_type
     data['precip_type'] = data['precip_type'].fillna(value='')
@@ -224,35 +226,19 @@ def upload_data(event, context):
     data_train = data[train_list]
     data_test = data[test_list]
 
-    # Take 1 column as label, evaluate for true/false via a condition,
-    # use +0 to convert bool to 0/1, and as_matrix to convert to numpy array
-    label_true = 'comfortable'
-
-    train_y = ((data_train.loc[:,label_column] == label_true) +0).as_matrix()
-    train_x = data_train.loc[:,feature_columns].as_matrix()
-
-    #return train_x, train_y
-
-    test_y = ((data_test.loc[:,label_column] == label_true) +0).as_matrix()
-    test_x = data_test.loc[:,feature_columns].as_matrix()
-
     # s3 upload training file
     train_file = user_id + '_train_' + str(now_epoch) + '.data'
 
-    f = io.BytesIO()
-    smac.write_numpy_to_dense_tensor(f, train_x, train_y)
-    f.seek(0)
+    data_train.to_csv(path_or_buf=file_path+train_file)
 
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_fileobj(f)
+    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_file(file_path+train_file)
 
     # s3 upload test file
     test_file = user_id + '_test_' + str(now_epoch) + '.data'
 
-    f = io.BytesIO()
-    smac.write_numpy_to_dense_tensor(f, test_x, test_y)
-    f.seek(0)
+    data_test.to_csv(path_or_buf=file_path+test_file)
 
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', train_file)).upload_fileobj(f)
+    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_file(file_path+test_file)
 
     return {"message": "No experiences found",
             "train_file": train_file,
