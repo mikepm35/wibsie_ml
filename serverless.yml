@@ -33,12 +33,18 @@ provider:
         - s3:ListBucket
         - s3:PutObject
       Resource: "*"
+    - Effect: Allow
+      Action:
+        - sagemaker:*
+      Resource: "*"
 
   environment:
     REGION: ${self:provider.region}
     STAGE: ${self:provider.stage}
+    SERVICE: ${self:service}
     SAGE_BUCKET: ${self:service}-sagebucket-${opt:stage, self:provider.stage}
     SAGE_BUCKET_PREFIX: sagemaker/trainingfiles
+    FUNCTION_PREFIX: ${self:service}-${opt:stage, self:provider.stage}-
 
 plugins:
   - serverless-python-requirements
@@ -63,9 +69,10 @@ functions:
 
   train_model:
     handler: train_model.train
+    timeout: 300
 
   upload_data:
-    handler: train_model.upload_data
+    handler: upload_data.upload_data
     timeout: 300
 
 resources:

@@ -7,9 +7,9 @@ import os
 import datetime
 import io
 import decimal
+import time
+import json
 
-import pandas as pd
-import numpy as np
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 import sagemaker as sm
@@ -25,232 +25,117 @@ LINEAR_CONTAINERS = {
 
 
 def train(event, context):
-    """Uploads fresh data from dynamodb and runs training.
-    Can run globally or for a user, and expects user_id in event."""
-
-    # Read in relevant environment / role variables
-    sm_role = sm.get_execution_role()
-    bucket = os.environ['SAGE_BUCKET']
-    bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
-
-    return {"message": "Train function executed successfully",
-            "event": event}
-
-
-def upload_data(event, context):
-    """Creates a new s3 resource in the format for model training.
-    Can be run globally or for a specific user, and expects user_id in event.
-    Returns the resource id it created."""
+    """Updates training for a given user based on latest data upload"""
 
     # Read in relevant environment variables, and allow for local run
     if event.get('runlocal'):
         print('Running local and using environment variable placeholders')
+        bucket = 'wibsie-ml3-sagebucket-dev'
         bucket_prefix = 'sagemaker/trainingfiles'
         region = 'us-east-1'
         stage = 'dev'
-        bucket = 'wibsie-ml3-sagebucket-' + stage
-        file_path = ''
+        role = 'arn:aws:iam::530583866435:role/service-role/AmazonSageMaker-ExecutionRole-20180616T150039'
     else:
         bucket = os.environ['SAGE_BUCKET']
         bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
         region = os.environ['REGION']
         stage = os.environ['STAGE']
-        file_path = '/tmp/'
+        service = os.environ['SERVICE']
+        function_prefix = os.environ['FUNCTION_PREFIX']
+        role = sm.get_execution_role()
 
     user_id = event['user_id']
-    now_epoch = get_epoch_ms()
 
-    dynamodb = boto3.resource('dynamodb',
-                                region_name=region)
+    dynamodb = boto3.resource('dynamodb', region_name=region)
 
-    # Read in all table data (numbers are type Decimal) and organize by keys
-    ##Users
+    # Read model data from user
     table_users = dynamodb.Table('wibsie-users-'+stage)
+    response = table_users.query(
+                    KeyConditionExpression=Key('id').eq(user_id))
+    data_user = response['Items'][0]
 
-    if user_id == 'global':
-        response = table_users.scan()
-        data_users = response['Items']
-
-        while 'LastEvaluatedKey' in response:
-            response = table_users.scan(
-                            ExclusiveStartKey=response['LastEvaluatedKey'])
-            data_users += response['Items']
-
-    else:
-        response = table_users.query(
-                        KeyConditionExpression=Key('id').eq(user_id))
-        data_users = response['Items']
-
-    datakey_users = {}
-    for u in data_users:
-        datakey_users[u['id']] = u
-
-    ##Experiences
-    table_experiences = dynamodb.Table('wibsie-experiences-'+stage)
-    if user_id == 'global':
-        response = table_experiences.scan()
-        data_experiences = response['Items']
-
-        while 'LastEvaluatedKey' in response:
-            response = table_experiences.scan(
-                            ExclusiveStartKey=response['LastEvaluatedKey'])
-            data_experiences += response['Items']
-
-    else:
-        response = table_experiences.query(
-                        KeyConditionExpression=Key('user_id').eq(user_id))
-        data_experiences = response['Items']
-
-    # Return if no experiences found
-    if len(data_experiences) < 10:
-        return {"message": "Too few experiences found: {}".format(len(data_experiences)),
-                "train_file": "",
-                "test_file": "",
+    if not data_user.get('model') or not data_user['model'].get('train_file') \
+    or not data_user['model'].get('validation_file'):
+        return {"message": "No model data to train, exiting",
                 "event": event}
 
-    ##Locations - TODO: Filter based on experiences
-    table_locations = dynamodb.Table('wibsie-locations-'+stage)
-    response = table_locations.scan()
-    data_locations = response['Items']
+    # Settup training parameters
+    linear_job = user_id + '-linearmodel-' + str(round(time.time()))
 
-    while 'LastEvaluatedKey' in response:
-        response = table_locations.scan(
-                        ExclusiveStartKey=response['LastEvaluatedKey'])
-        data_locations += response['Items']
+    print("Job name is:", linear_job)
 
-    datakey_locations = {}
-    for l in data_locations:
-        datakey_locations[l['zip']] = l
+    linear_training_params = {
+        "RoleArn": role,
+        "TrainingJobName": linear_job,
+        "AlgorithmSpecification": {
+            "TrainingImage": LINEAR_CONTAINERS[region],
+            "TrainingInputMode": "File"
+        },
+        "ResourceConfig": {
+            "InstanceCount": 1,
+            "InstanceType": "ml.m4.xlarge",
+            "VolumeSizeInGB": 10
+        },
+        "InputDataConfig": [
+            {
+                "ChannelName": "train",
+                "DataSource": {
+                    "S3DataSource": {
+                        "S3DataType": "S3Prefix",
+                        "S3Uri": "s3://{}/{}/train/{}".format(bucket, bucket_prefix, data_user['model']['train_file']),
+                        "S3DataDistributionType": "ShardedByS3Key"
+                    }
+                },
+                "CompressionType": "None",
+                "RecordWrapperType": "None"
+            },
+            {
+                "ChannelName": "validation",
+                "DataSource": {
+                    "S3DataSource": {
+                        "S3DataType": "S3Prefix",
+                        "S3Uri": "s3://{}/{}/validation/{}".format(bucket, bucket_prefix, data_user['model']['validation_file']),
+                        "S3DataDistributionType": "FullyReplicated"
+                    }
+                },
+                "CompressionType": "None",
+                "RecordWrapperType": "None"
+            }
 
-    ##Weather reports - TODO: Filter based on experiences
-    table_weatherreports = dynamodb.Table('wibsie-weatherreports-'+stage)
-    response = table_weatherreports.scan()
-    data_weatherreports = response['Items']
+        ],
+        "OutputDataConfig": {
+            "S3OutputPath": "s3://{}/{}/model/{}/".format(bucket, bucket_prefix, user_id)
+        },
+        "HyperParameters": {
+            "feature_dim": "16",
+            "mini_batch_size": "5",
+            "predictor_type": "binary_classifier",
+            "epochs": "10",
+            "num_models": "auto",
+            "loss": "auto"
+        },
+        "StoppingCondition": {
+            "MaxRuntimeInSeconds": 60 * 60
+        }
+    }
 
-    while 'LastEvaluatedKey' in response:
-        response = table_weatherreports.scan(
-                        ExclusiveStartKey=response['LastEvaluatedKey'])
-        data_weatherreports += response['Items']
+    # Start training
+    smcli = boto3.client('sagemaker', region_name=region)
 
-    datakey_weatherreports = {}
-    for w in data_weatherreports:
-        key = w['zip'] + str(w['expires'])
-        datakey_weatherreports[key] = w
+    smcli.create_training_job(**linear_training_params)
 
-    # Build a join around experiences
-    results = []
-    for e in data_experiences:
-        # Join to other data
-        user_row = datakey_users.get(e['user_id'])
-        if not user_row:
-            raise Exception('Did not find user row for: ', e['user_id'])
+    status = smcli.describe_training_job(TrainingJobName=linear_job)['TrainingJobStatus']
+    print(status)
+    smcli.get_waiter('training_job_completed_or_stopped').wait(TrainingJobName=linear_job)
+    if status == 'Failed':
+        message = smcli.describe_training_job(TrainingJobName=linear_job)['FailureReason']
+        print('Training failed with the following error: {}'.format(message))
+        raise Exception('Training job failed')
 
-        location_row = datakey_locations.get(e['zip'])
-        if not location_row:
-            raise Exception('Did not find location row for: ', e['zip'])
 
-        weather_row = datakey_weatherreports.get(e['zip']+str(e['weather_expiration']))
-        if not weather_row:
-            raise Exception('Did not find weather row for: ', e['zip']+str(e['weather_expiration']))
-
-        if 'precipType' not in weather_row:
-            weather_row['precipType'] = None
-
-        # Convert activity to met
-        if e['activity'] == 'standing':
-            activity_met = 1.1
-        elif e['activity'] == 'walking':
-            activity_met = 2.5
-        elif e['activity'] == 'exercising':
-            activity_met = 6.0
-        else:
-            raise Exception('Unrecognized activity: ', e['activity'])
-
-        # Convert clothing to clo
-        if e['upper_clothing'] == 'no_shirt':
-            upper_clo = 0.0
-        elif e['upper_clothing'] == 'short_sleeves':
-            upper_clo = 0.2
-        elif e['upper_clothing'] == 'long_sleeves':
-            upper_clo = 0.4
-        elif e['upper_clothing'] == 'jacket':
-            upper_clo = 0.6
-        else:
-            raise Exception('Unrecognized upper clothing: ', e['upper_clothing'])
-
-        if e['lower_clothing'] == 'shorts':
-            lower_clo = 0.2
-        elif e['lower_clothing'] == 'pants':
-            lower_clo = 0.4
-        else:
-            raise Exception('Unrecognized lower clothing: ', e['lower_clothing'])
-
-        total_clo = upper_clo + lower_clo
-
-        # Get age
-        age = datetime.datetime.now().year - int(user_row['birth_year'])
-
-        # Add row
-        results.append({'age': age,
-                        'bmi': float(user_row['bmi']),
-                        'gender': user_row['gender'],
-                        'lifestyle': user_row['lifestyle'],
-                        'loc_type': location_row['loc_type'],
-                        'apparent_temperature': float(weather_row['apparentTemperature']),
-                        'cloud_cover': float(weather_row['cloudCover']),
-                        'humidity': float(weather_row['humidity']),
-                        'precip_intensity': float(weather_row['precipIntensity']),
-                        'precip_probability': float(weather_row['precipProbability']),
-                        'temperature': float(weather_row['temperature']),
-                        'wind_gust': float(weather_row['windGust']),
-                        'wind_speed': float(weather_row['windSpeed']),
-                        'precip_type': weather_row['precipType'],
-                        'activity_met': activity_met,
-                        'total_clo': total_clo,
-                        'comfort_level_result': e['comfort_level_result']})
-
-    label_column = 'comfort_level_result'
-    feature_columns = [l for l in results[0].keys() if l != label_column]
-
-    data = pd.DataFrame(results)
-    data.index.name = 'df_id'
-
-    # Fill all Nones in precip_type
-    data['precip_type'] = data['precip_type'].fillna(value='')
-
-    # Split into 80% train and 20% test
-    rand_split = np.random.rand(len(data))
-    train_list = rand_split < 0.8
-    test_list = rand_split >= 0.8
-
-    data_train = data[train_list]
-    data_test = data[test_list]
-
-    # s3 upload training file
-    train_file = user_id + '_train_' + str(now_epoch) + '.data'
-
-    data_train.to_csv(path_or_buf=file_path+train_file)
-
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_file(file_path+train_file)
-
-    # s3 upload test file
-    test_file = user_id + '_test_' + str(now_epoch) + '.data'
-
-    data_test.to_csv(path_or_buf=file_path+test_file)
-
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_file(file_path+test_file)
-
-    return {"message": "No experiences found",
-            "train_file": train_file,
-            "test_file": test_file,
+    return {"message": "Train function executed successfully",
             "event": event}
 
-
-def get_epoch_ms():
-    """Helper function to current epoch int in ms"""
-    now = datetime.datetime.utcnow()
-    epoch = datetime.datetime.utcfromtimestamp(0)
-    return int((now-epoch).total_seconds() * 1000.0)
 
 
 #
