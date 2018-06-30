@@ -36,6 +36,7 @@ provider:
     - Effect: Allow
       Action:
         - sagemaker:*
+        - iam:PassRole
       Resource: "*"
 
   environment:

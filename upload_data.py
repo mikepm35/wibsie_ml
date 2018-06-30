@@ -238,11 +238,6 @@ def upload_data(event, context):
 
     boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_fileobj(f)
 
-    # data_train.to_csv(path_or_buf=file_path+train_file, header=False, index=False)
-    #
-    # train_objectpath = os.path.join(bucket_prefix, 'train', train_file)
-    # boto3.Session().resource('s3').Bucket(bucket).Object(train_objectpath).upload_file(file_path+train_file)
-
     # s3 upload validation file
     val_file = user_id + '_validation_' + str(now_epoch) + '.data'
 
@@ -251,11 +246,6 @@ def upload_data(event, context):
     f.seek(0)
 
     boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'validation', val_file)).upload_fileobj(f)
-
-    # data_val.to_csv(path_or_buf=file_path+val_file, header=False, index=False)
-    #
-    # val_objectpath = os.path.join(bucket_prefix, 'validation', val_file)
-    # boto3.Session().resource('s3').Bucket(bucket).Object(val_objectpath).upload_file(file_path+val_file)
 
     # s3 upload test file
     test_file = user_id + '_test_' + str(now_epoch) + '.data'
@@ -266,12 +256,7 @@ def upload_data(event, context):
 
     boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_fileobj(f)
 
-    # data_test.to_csv(path_or_buf=file_path+test_file, header=False, index=False)
-    #
-    # test_objectpath = os.path.join(bucket_prefix, 'test', test_file)
-    # boto3.Session().resource('s3').Bucket(bucket).Object(test_objectpath).upload_file(file_path+test_file)
-
-    # Update user table with latest data, now_epoch
+    # Update user table with latest data
     response = table_users.update_item(
                     Key={'id': user_id},
                     UpdateExpression="set model.train_file=:train_file, model.train_updated=:train_updated, model.validation_file=:validation_file, model.validation_updated=:validation_updated, model.test_file=:test_file, model.test_updated=:test_updated",
@@ -284,19 +269,6 @@ def upload_data(event, context):
                         ':test_updated': now_epoch
                     },
                     ReturnValues="UPDATED_NEW")
-
-    # response = table_users.update_item(
-    #                 Key={'id': user_id},
-    #                 UpdateExpression="set model=:model",
-    #                 ExpressionAttributeValues={
-    #                     ':model': {'train_file': train_file,
-    #                                 'train_updated': now_epoch,
-    #                                 'validation_file': val_file,
-    #                                 'validation_updated': now_epoch,
-    #                                 'test_file': test_file,
-    #                                 'test_updated': now_epoch}
-    #                 },
-    #                 ReturnValues="UPDATED_NEW")
 
     print('Update user succeeded')
 
