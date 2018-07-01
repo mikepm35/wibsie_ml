@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
-import sagemaker.amazon.common as smac
+# import sagemaker.amazon.common as smac
 
 
 def upload_data(event, context):
@@ -22,7 +22,7 @@ def upload_data(event, context):
     # Read in relevant environment variables, and allow for local run
     if event.get('runlocal'):
         print('Running local and using environment variable placeholders')
-        bucket_prefix = 'sagemaker/trainingfiles'
+        bucket_prefix = 'sagemaker'
         region = 'us-east-1'
         stage = 'dev'
         bucket = 'wibsie-ml3-sagebucket-' + stage
@@ -193,6 +193,8 @@ def upload_data(event, context):
     data = pd.DataFrame(results)
     data = data[columns]
 
+    # TODO: Remove all rows without a label
+
     # Fill all Nones in precip_type
     data['precip_type'] = data['precip_type'].fillna(value='')
 
@@ -211,64 +213,90 @@ def upload_data(event, context):
 
     # Split into 80% train and 10% validation and 10% test
     rand_split = np.random.rand(len(data))
-    train_list = rand_split < 0.8
-    val_list = (rand_split >= 0.8) & (rand_split < 0.9)
+    train_list = rand_split < 0.9
+    # val_list = (rand_split >= 0.8) & (rand_split < 0.9)
     test_list = rand_split >= 0.9
 
     data_train = data[train_list]
-    data_val = data[val_list]
+    # data_val = data[val_list]
     data_test = data[test_list]
 
-    # Convert to matricies
-    train_y = data_train.iloc[:,0].as_matrix()
-    train_X = data_train.iloc[:,1:].as_matrix()
-
-    val_y = data_val.iloc[:,0].as_matrix()
-    val_X = data_val.iloc[:,1:].as_matrix()
-
-    test_y = data_test.iloc[:,0].as_matrix()
-    test_X = data_test.iloc[:,1:].as_matrix()
+    # # Convert to matricies (for protobuf used by sagemaker)
+    # train_y = data_train.iloc[:,0].as_matrix()
+    # train_X = data_train.iloc[:,1:].as_matrix()
+    #
+    # val_y = data_val.iloc[:,0].as_matrix()
+    # val_X = data_val.iloc[:,1:].as_matrix()
+    #
+    # test_y = data_test.iloc[:,0].as_matrix()
+    # test_X = data_test.iloc[:,1:].as_matrix()
 
     # s3 upload training file
-    train_file = user_id + '_train_' + str(now_epoch) + '.data'
+    train_file = 'train.csv'
 
-    f = io.BytesIO()
-    smac.write_numpy_to_dense_tensor(f, train_X.astype('float32'), train_y.astype('float32'))
-    f.seek(0)
+    data_train.to_csv(path_or_buf=file_path+train_file, index=False)
 
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_fileobj(f)
+    train_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles',str(now_epoch),train_file)
 
-    # s3 upload validation file
-    val_file = user_id + '_validation_' + str(now_epoch) + '.data'
-
-    f = io.BytesIO()
-    smac.write_numpy_to_dense_tensor(f, val_X.astype('float32'), val_y.astype('float32'))
-    f.seek(0)
-
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'validation', val_file)).upload_fileobj(f)
+    boto3.Session().resource('s3').Bucket(bucket).Object(train_s3path).upload_file(train_file)
 
     # s3 upload test file
-    test_file = user_id + '_test_' + str(now_epoch) + '.data'
+    test_file = 'test.csv'
 
-    f = io.BytesIO()
-    smac.write_numpy_to_dense_tensor(f, test_X.astype('float32'), test_y.astype('float32'))
-    f.seek(0)
+    data_test.to_csv(path_or_buf=file_path+test_file, index=False)
 
-    boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_fileobj(f)
+    test_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles',str(now_epoch),test_file)
 
-    # Update user table with latest data
-    response = table_users.update_item(
-                    Key={'id': user_id},
-                    UpdateExpression="set model.train_file=:train_file, model.train_updated=:train_updated, model.validation_file=:validation_file, model.validation_updated=:validation_updated, model.test_file=:test_file, model.test_updated=:test_updated",
-                    ExpressionAttributeValues={
-                        ':train_file': train_file,
-                        ':train_updated': now_epoch,
-                        ':validation_file': val_file,
-                        ':validation_updated': now_epoch,
-                        ':test_file': test_file,
-                        ':test_updated': now_epoch
-                    },
-                    ReturnValues="UPDATED_NEW")
+    boto3.Session().resource('s3').Bucket(bucket).Object(test_s3path).upload_file(test_file)
+
+    # # s3 upload training file (protobuf used by sagemaker)
+    # train_file = user_id + '_train_' + str(now_epoch) + '.data'
+    #
+    # f = io.BytesIO()
+    # smac.write_numpy_to_dense_tensor(f, train_X.astype('float32'), train_y.astype('float32'))
+    # f.seek(0)
+    #
+    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_fileobj(f)
+    #
+    # # s3 upload validation file
+    # val_file = user_id + '_validation_' + str(now_epoch) + '.data'
+    #
+    # f = io.BytesIO()
+    # smac.write_numpy_to_dense_tensor(f, val_X.astype('float32'), val_y.astype('float32'))
+    # f.seek(0)
+    #
+    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'validation', val_file)).upload_fileobj(f)
+    #
+    # # s3 upload test file
+    # test_file = user_id + '_test_' + str(now_epoch) + '.data'
+    #
+    # f = io.BytesIO()
+    # smac.write_numpy_to_dense_tensor(f, test_X.astype('float32'), test_y.astype('float32'))
+    # f.seek(0)
+    #
+    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_fileobj(f)
+
+    # Update user table with latest data and optionally create model key
+    if not datakey_users[user_id].get('model'):
+        response = table_users.update_item(
+                        Key={'id': user_id},
+                        UpdateExpression="""set model=:model""",
+                        ExpressionAttributeValues={
+                            ':model': {'train_created': now_epoch,
+                                        'test_created': now_epoch}
+                        },
+                        ReturnValues="UPDATED_NEW")
+
+    else:
+        response = table_users.update_item(
+                        Key={'id': user_id},
+                        UpdateExpression="""set model.train_created=:train_created,
+                                                model.test_created=:test_created""",
+                        ExpressionAttributeValues={
+                            ':train_created': now_epoch,
+                            ':test_created': now_epoch
+                        },
+                        ReturnValues="UPDATED_NEW")
 
     print('Update user succeeded')
 

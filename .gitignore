@@ -17,6 +17,9 @@ var/
 *.egg
 node_modules
 *.data
+**.DS_Store
+**.pyc
+**.csv
 
 # Serverless directories
 .serverless
