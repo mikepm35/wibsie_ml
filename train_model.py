@@ -13,7 +13,7 @@ import json
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 import sagemaker as sm
-import sagemaker.amazon.common as smac
+# import sagemaker.amazon.common as smac
 from sagemaker.tensorflow import TensorFlow
 
 # Linear containers for sagemaker algos
@@ -71,10 +71,6 @@ def train_tf(event, context):
     model_trainfiles_location = 's3://'+user_bucket+'/trainingfiles/'+str(data_user['model']['train_created'])+'/'
     print(model_trainfiles_location)
 
-    # # Define session
-    # boto_session = boto3.session.Session(region_name=region)
-    # sm_session = sm.session.Session(boto_session=boto_session)
-
     # Create estimator
     job_name = user_id + '-job-' + str(now_epoch)
     tf_estimator = TensorFlow(entry_point='model.py',
@@ -87,27 +83,39 @@ def train_tf(event, context):
                                 evaluation_steps=10)
 
     tf_estimator.fit(inputs=model_trainfiles_location,
-                        wait=True,
+                        wait=False,
                         job_name=job_name)
 
-    print('Finished tf_estimator fit')
+    print('Finished tf_estimator fit call (may or may not be waiting)')
 
-    # Update user
+    # Retrieve existing model information
+    model_created_prev = 'none'
+    if data_user['model'].get('model_created'):
+        model_created_prev = data_user['model']['model_created']
+
+    model_train_created_prev = 'none'
+    if data_user['model'].get('model_train_created'):
+        model_train_created_prev = data_user['model']['model_train_created']
+
+    # Update user with model information
     response = table_users.update_item(
                     Key={'id': user_id},
                     UpdateExpression="""set model.model_created=:model_created,
-                                            model.model_train_created=:model_train_created""",
+                                            model.model_train_created=:model_train_created,
+                                            model.model_created_prev=:model_created_prev,
+                                            model.model_train_created_prev=:model_train_created_prev""",
                     ExpressionAttributeValues={
                         ':model_created': now_epoch,
-                        ':model_train_created': data_user['model']['train_created']
+                        ':model_train_created': data_user['model']['train_created'],
+                        ':model_created_prev': model_created_prev,
+                        ':model_train_created_prev': model_train_created_prev
                     },
                     ReturnValues="UPDATED_NEW")
 
-    # Temporarily deploy
-    tf_predictor = tf_estimator.deploy(initial_instance_count=1,
-                                       instance_type='ml.m4.xlarge')
-
-    print('Finished tf_predictor deploy')
+    # Deploy to sagemaker
+    # tf_predictor = tf_estimator.deploy(initial_instance_count=1,
+    #                                    instance_type='ml.m4.xlarge')
+    # print('Finished tf_predictor deploy')
 
     return {"message": "Train function executed successfully",
             "event": event}

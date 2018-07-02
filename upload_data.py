@@ -13,6 +13,8 @@ import boto3
 from boto3.dynamodb.conditions import Key, Attr
 # import sagemaker.amazon.common as smac
 
+import model_helper
+
 
 def upload_data(event, context):
     """Creates a new s3 resource in the format for model training.
@@ -133,39 +135,17 @@ def upload_data(event, context):
         if 'precipType' not in weather_row:
             weather_row['precipType'] = None
 
-        # Convert activity to met
-        if e['activity'] == 'standing':
-            activity_met = 1.1
-        elif e['activity'] == 'walking':
-            activity_met = 2.5
-        elif e['activity'] == 'exercising':
-            activity_met = 6.0
-        else:
-            raise Exception('Unrecognized activity: ', e['activity'])
+        # Fetch continuous representations
+        activity_met = model_helper.activity_to_met(e['activity'])
 
-        # Convert clothing to clo
-        if e['upper_clothing'] == 'no_shirt':
-            upper_clo = 0.0
-        elif e['upper_clothing'] == 'short_sleeves':
-            upper_clo = 0.2
-        elif e['upper_clothing'] == 'long_sleeves':
-            upper_clo = 0.4
-        elif e['upper_clothing'] == 'jacket':
-            upper_clo = 0.6
-        else:
-            raise Exception('Unrecognized upper clothing: ', e['upper_clothing'])
+        upper_clo = model_helper.upper_clothing_to_clo(e['upper_clothing'])
 
-        if e['lower_clothing'] == 'shorts':
-            lower_clo = 0.2
-        elif e['lower_clothing'] == 'pants':
-            lower_clo = 0.4
-        else:
-            raise Exception('Unrecognized lower clothing: ', e['lower_clothing'])
+        lower_clo = model_helper.lower_clothing_to_clo(e['lower_clothing'])
 
         total_clo = upper_clo + lower_clo
 
         # Get age
-        age = datetime.datetime.now().year - int(user_row['birth_year'])
+        age = model_helper.birth_year_to_age(int(user_row['birth_year']))
 
         # Add row
         results.append({'age': float(age),
@@ -193,23 +173,31 @@ def upload_data(event, context):
     data = pd.DataFrame(results)
     data = data[columns]
 
-    # TODO: Remove all rows without a label
-
-    # Fill all Nones in precip_type
+    # Fill all Nones
     data['precip_type'] = data['precip_type'].fillna(value='')
+    data['comfort_level_result'] = data['comfort_level_result'].fillna(value='none')
 
-    # Convert categorical data to integer codes
-    data['gender'] = data['gender'].astype('category').cat.codes
-    data['lifestyle'] = data['lifestyle'].astype('category').cat.codes
-    data['loc_type'] = data['loc_type'].astype('category').cat.codes
-    data['precip_type'] = data['precip_type'].astype('category').cat.codes
+    # Remove all rows without a label
+    data = data[data['comfort_level_result'] != 'none']
 
-    # Convert data to buckets
-    age_buckets = [0,18, 25, 30, 35, 40, 45, 50, 55, 60, 65,150]
-    data['age'] = pd.cut(data.age, age_buckets, right=True).astype('category').cat.codes
+    # Convert categorical data to floats
+    data['gender'] = data['gender'].apply(model_helper.hash_gender)
+    data['lifestyle'] = data['lifestyle'].apply(model_helper.hash_lifestyle)
+    data['loc_type'] = data['loc_type'].apply(model_helper.hash_loc_type)
+    data['precip_type'] = data['precip_type'].apply(model_helper.hash_precip_type)
+    # data['gender'] = data['gender'].astype('category').cat.codes
+    # data['lifestyle'] = data['lifestyle'].astype('category').cat.codes
+    # data['loc_type'] = data['loc_type'].astype('category').cat.codes
+    # data['precip_type'] = data['precip_type'].astype('category').cat.codes
+
+    # Convert data to buckets and then float
+    data['age'] = data['age'].apply(model_helper.hash_age)
+    # age_buckets = [0,18, 25, 30, 35, 40, 45, 50, 55, 60, 65,150]
+    # data['age'] = pd.cut(data.age, age_buckets, right=True).astype('category').cat.codes
 
     # Convert label column to integer (comfortable=1)
-    data['comfort_level_result'] = ((data.comfort_level_result == 'comfortable') +0)
+    data['comfort_level_result'] = data['comfort_level_result'].apply(model_helper.hash_comfort_level_result)
+    # data['comfort_level_result'] = ((data.comfort_level_result == 'comfortable') +0)
 
     # Split into 80% train and 10% validation and 10% test
     rand_split = np.random.rand(len(data))
@@ -282,19 +270,16 @@ def upload_data(event, context):
                         Key={'id': user_id},
                         UpdateExpression="""set model=:model""",
                         ExpressionAttributeValues={
-                            ':model': {'train_created': now_epoch,
-                                        'test_created': now_epoch}
+                            ':model': {'train_created': now_epoch}
                         },
                         ReturnValues="UPDATED_NEW")
 
     else:
         response = table_users.update_item(
                         Key={'id': user_id},
-                        UpdateExpression="""set model.train_created=:train_created,
-                                                model.test_created=:test_created""",
+                        UpdateExpression="""set model.train_created=:train_created""",
                         ExpressionAttributeValues={
-                            ':train_created': now_epoch,
-                            ':test_created': now_epoch
+                            ':train_created': now_epoch
                         },
                         ReturnValues="UPDATED_NEW")
 

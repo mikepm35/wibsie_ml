@@ -63,6 +63,7 @@ package:
     - 'pandas'
     - 'numpy'
     - 'sagemaker'
+    - 'tensorflow'
 
 functions:
   train_model:
