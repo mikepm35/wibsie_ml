@@ -32,10 +32,14 @@ provider:
       Action:
         - s3:ListBucket
         - s3:PutObject
+        - s3:CreateBucket
       Resource: "*"
     - Effect: Allow
       Action:
         - sagemaker:*
+      Resource: "*"
+    - Effect: Allow
+      Action:
         - iam:PassRole
       Resource: "*"
 
@@ -45,6 +49,7 @@ provider:
     SERVICE: ${self:service}
     SAGE_BUCKET: ${self:service}-sagebucket-${opt:stage, self:provider.stage}
     SAGE_BUCKET_PREFIX: sagemaker
+    SAGE_ROLE: "arn:aws:iam::530583866435:role/service-role/AmazonSageMaker-ExecutionRole-20180616T150039"
     FUNCTION_PREFIX: ${self:service}-${opt:stage, self:provider.stage}-
 
 plugins:
@@ -52,38 +57,72 @@ plugins:
 
 custom:
   pythonRequirements:
+    invalidateCaches: true
     dockerizePip: non-linux
+    #dockerizePip: true
     zip: true
+    slim: true
+    noDeploy:
+      - boto3
+      - botocore
+      - tensorboard
 
 package:
-  exclude:
-    - '**/*'
-  include:
-    - '*.py'
-    - 'pandas'
-    - 'numpy'
-    - 'sagemaker'
-    - 'tensorflow'
+  individually: true
+  # exclude:
+  #   - '**/*'
+  # include:
+  #   - '*.py'
+  #   - 'tf_funcs/*.py'
+  #   - 'data_funcs/*.py'
+  #   - pandas
+  #   - numpy
+  #   - sagemaker
 
 functions:
   train_model:
     handler: train_model.train_tf
+    module: tf_funcs
     timeout: 300
+    exclude:
+      - '**/*'
+    include:
+      - '*.py'
+      - 'tf_funcs/*.py'
+      - 'numpy'
+      - 'scipy'
+      # - 'urllib3'
 
   infer_model:
     handler: infer_model.infer
+    module: tf_funcs
     timeout: 300
+    exclude:
+      - '**/*'
+    include:
+      - '*.py'
+      - 'tf_funcs/*.py'
+      - 'numpy'
+      # - 'urllib3'
 
   upload_data:
     handler: upload_data.upload_data
+    module: data_funcs
     timeout: 300
+    exclude:
+      - '**/*'
+    include:
+      - '*.py'
+      - 'data_funcs/*.py'
+      - 'numpy'
+      - 'pandas'
 
-resources:
-  Resources:
-    SageBucket:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: ${self:provider.environment.SAGE_BUCKET}
+# resources:
+#   Resources:
+#     SageBucket:
+#       Type: AWS::S3::Bucket
+#       Properties:
+#         BucketName: ${self:provider.environment.SAGE_BUCKET}
 
 
 #
