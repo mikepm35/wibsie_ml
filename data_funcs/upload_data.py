@@ -13,7 +13,7 @@ import boto3
 from boto3.dynamodb.conditions import Key, Attr
 # import sagemaker.amazon.common as smac
 
-import model_helper
+from common import model_helper
 
 
 def upload_data(event, context):
@@ -39,8 +39,7 @@ def upload_data(event, context):
     user_id = event['user_id']
     now_epoch = get_epoch_ms()
 
-    dynamodb = boto3.resource('dynamodb',
-                                region_name=region)
+    dynamodb = boto3.resource('dynamodb', region_name=region)
 
     # Read in all table data (numbers are type Decimal) and organize by keys
     ##Users
@@ -117,6 +116,12 @@ def upload_data(event, context):
         datakey_weatherreports[key] = w
 
     # Build a join around experiences
+    feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
+                        'apparent_temperature', 'cloud_cover', 'humidity',
+                        'precip_intensity', 'precip_probability', 'temperature',
+                        'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                        'total_clo']
+    label_column = 'comfort_level_result'
     results = []
     for e in data_experiences:
         # Join to other data
@@ -135,68 +140,85 @@ def upload_data(event, context):
         if 'precipType' not in weather_row:
             weather_row['precipType'] = None
 
-        # Fetch continuous representations
-        activity_met = model_helper.activity_to_met(e['activity'])
+        # Get float representation and convert to dict for pandas
+        float_list = model_helper.table_to_floats(data_user=user_row,
+                                                data_weatherreport=weather_row,
+                                                data_experience=e,
+                                                data_location=location_row)
 
-        upper_clo = model_helper.upper_clothing_to_clo(e['upper_clothing'])
+        result_dict = {}
+        for i in range(0,len(feature_columns)):
+            result_dict[feature_columns[i]] = float_list[i]
 
-        lower_clo = model_helper.lower_clothing_to_clo(e['lower_clothing'])
+        result_dict['comfort_level_result'] = model_helper.hash_comfort_level_result(e['comfort_level_result'])
 
-        total_clo = upper_clo + lower_clo
+        results.append(result_dict)
 
-        # Get age
-        age = model_helper.birth_year_to_age(int(user_row['birth_year']))
+        # # Fetch continuous representations
+        # activity_met = model_helper.activity_to_met(e['activity'])
+        #
+        # upper_clo = model_helper.upper_clothing_to_clo(e['upper_clothing'])
+        #
+        # lower_clo = model_helper.lower_clothing_to_clo(e['lower_clothing'])
+        #
+        # total_clo = upper_clo + lower_clo
+        #
+        # # Get age
+        # age = model_helper.birth_year_to_age(int(user_row['birth_year']))
+        #
+        # # Add row
+        # results.append({'age': float(age),
+        #                 'bmi': float(user_row['bmi']),
+        #                 'gender': user_row['gender'],
+        #                 'lifestyle': user_row['lifestyle'],
+        #                 'loc_type': location_row['loc_type'],
+        #                 'apparent_temperature': float(weather_row['apparentTemperature']),
+        #                 'cloud_cover': float(weather_row['cloudCover']),
+        #                 'humidity': float(weather_row['humidity']),
+        #                 'precip_intensity': float(weather_row['precipIntensity']),
+        #                 'precip_probability': float(weather_row['precipProbability']),
+        #                 'temperature': float(weather_row['temperature']),
+        #                 'wind_gust': float(weather_row['windGust']),
+        #                 'wind_speed': float(weather_row['windSpeed']),
+        #                 'precip_type': weather_row['precipType'],
+        #                 'activity_met': float(activity_met),
+        #                 'total_clo': float(total_clo),
+        #                 'comfort_level_result': e['comfort_level_result']})
 
-        # Add row
-        results.append({'age': float(age),
-                        'bmi': float(user_row['bmi']),
-                        'gender': user_row['gender'],
-                        'lifestyle': user_row['lifestyle'],
-                        'loc_type': location_row['loc_type'],
-                        'apparent_temperature': float(weather_row['apparentTemperature']),
-                        'cloud_cover': float(weather_row['cloudCover']),
-                        'humidity': float(weather_row['humidity']),
-                        'precip_intensity': float(weather_row['precipIntensity']),
-                        'precip_probability': float(weather_row['precipProbability']),
-                        'temperature': float(weather_row['temperature']),
-                        'wind_gust': float(weather_row['windGust']),
-                        'wind_speed': float(weather_row['windSpeed']),
-                        'precip_type': weather_row['precipType'],
-                        'activity_met': float(activity_met),
-                        'total_clo': float(total_clo),
-                        'comfort_level_result': e['comfort_level_result']})
 
-    label_column = 'comfort_level_result'
-    feature_columns = [l for l in results[0].keys() if l != label_column]
+
+    # Make result first column
+    # label_column = 'comfort_level_result'
+    # feature_columns = [l for l in results[0].keys() if l != label_column]
     columns = [label_column] + feature_columns
 
     data = pd.DataFrame(results)
     data = data[columns]
 
     # Fill all Nones
-    data['precip_type'] = data['precip_type'].fillna(value='')
-    data['comfort_level_result'] = data['comfort_level_result'].fillna(value='none')
+    # data['precip_type'] = data['precip_type'].fillna(value='')
+    data['comfort_level_result'] = data['comfort_level_result'].fillna(value=-1)
 
     # Remove all rows without a label
-    data = data[data['comfort_level_result'] != 'none']
+    data = data[data['comfort_level_result'] >= 0]
 
-    # Convert categorical data to floats
-    data['gender'] = data['gender'].apply(model_helper.hash_gender)
-    data['lifestyle'] = data['lifestyle'].apply(model_helper.hash_lifestyle)
-    data['loc_type'] = data['loc_type'].apply(model_helper.hash_loc_type)
-    data['precip_type'] = data['precip_type'].apply(model_helper.hash_precip_type)
+    # # Convert categorical data to floats
+    # data['gender'] = data['gender'].apply(model_helper.hash_gender)
+    # data['lifestyle'] = data['lifestyle'].apply(model_helper.hash_lifestyle)
+    # data['loc_type'] = data['loc_type'].apply(model_helper.hash_loc_type)
+    # data['precip_type'] = data['precip_type'].apply(model_helper.hash_precip_type)
     # data['gender'] = data['gender'].astype('category').cat.codes
     # data['lifestyle'] = data['lifestyle'].astype('category').cat.codes
     # data['loc_type'] = data['loc_type'].astype('category').cat.codes
     # data['precip_type'] = data['precip_type'].astype('category').cat.codes
 
     # Convert data to buckets and then float
-    data['age'] = data['age'].apply(model_helper.hash_age)
+    # data['age'] = data['age'].apply(model_helper.hash_age)
     # age_buckets = [0,18, 25, 30, 35, 40, 45, 50, 55, 60, 65,150]
     # data['age'] = pd.cut(data.age, age_buckets, right=True).astype('category').cat.codes
 
     # Convert label column to integer (comfortable=1)
-    data['comfort_level_result'] = data['comfort_level_result'].apply(model_helper.hash_comfort_level_result)
+    # data['comfort_level_result'] = data['comfort_level_result'].apply(model_helper.hash_comfort_level_result)
     # data['comfort_level_result'] = ((data.comfort_level_result == 'comfortable') +0)
 
     # Split into 80% train and 10% validation and 10% test
@@ -235,7 +257,7 @@ def upload_data(event, context):
 
     test_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles',str(now_epoch),test_file)
 
-    boto3.Session().resource('s3').Bucket(bucket).Object(test_s3path).upload_file(file_path+train_file)
+    boto3.Session().resource('s3').Bucket(bucket).Object(test_s3path).upload_file(file_path+test_file)
 
     # # s3 upload training file (protobuf used by sagemaker)
     # train_file = user_id + '_train_' + str(now_epoch) + '.data'

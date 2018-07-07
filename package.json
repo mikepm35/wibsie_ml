@@ -10,5 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "serverless-python-requirements": "github:mikepm35/serverless-python-requirements"
+  },
+  "devDependencies": {
+    "serverless-package-common": "^1.0.3"
   }
 }

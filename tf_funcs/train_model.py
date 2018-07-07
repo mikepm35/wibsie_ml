@@ -102,18 +102,26 @@ def train_tf(event, context):
     if data_user['model'].get('model_train_created'):
         model_train_created_prev = data_user['model']['model_train_created']
 
+    model_job_name_prev = 'none'
+    if data_user['model'].get('model_job_name_prev'):
+        model_job_name_prev = data_user['model']['model_job_name_prev']
+
     # Update user with model information
     response = table_users.update_item(
                     Key={'id': user_id},
                     UpdateExpression="""set model.model_created=:model_created,
                                             model.model_train_created=:model_train_created,
+                                            model.model_job_name=:model_job_name,
                                             model.model_created_prev=:model_created_prev,
-                                            model.model_train_created_prev=:model_train_created_prev""",
+                                            model.model_train_created_prev=:model_train_created_prev,
+                                            model.model_job_name_prev=:model_job_name_prev""",
                     ExpressionAttributeValues={
                         ':model_created': now_epoch,
                         ':model_train_created': data_user['model']['train_created'],
+                        ':model_job_name': job_name,
                         ':model_created_prev': model_created_prev,
-                        ':model_train_created_prev': model_train_created_prev
+                        ':model_train_created_prev': model_train_created_prev,
+                        ':model_job_name_prev': model_job_name_prev
                     },
                     ReturnValues="UPDATED_NEW")
 
