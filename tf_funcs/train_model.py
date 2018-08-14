@@ -103,7 +103,7 @@ def train_tf(event, context):
         model_train_created_prev = data_user['model']['model_train_created']
 
     model_job_name_prev = 'none'
-    if data_user['model'].get('model_job_name_prev'):
+    if data_user['model'].get('model_job_name'):
         model_job_name_prev = data_user['model']['model_job_name_prev']
 
     # Update user with model information
