@@ -24,6 +24,9 @@ from common import model_helper
 def infer(event, context):
     """Deploy previously uploaded model locally and make a prediction"""
 
+    print('Event: ', event)
+    print('Context: ', context)
+
     # Read in relevant environment variables, and allow for local run
     if event.get('runlocal'):
         print('Running local and using environment variable placeholders')
@@ -46,9 +49,15 @@ def infer(event, context):
         #print('SM execution role: ', sm.get_execution_role()) #not needed
 
     now_epoch = round(time.time()*1000)
-    user_id = event['user_id']
-    user_bucket = os.path.join(bucket,bucket_prefix,user_id)
+
+    # Parse AWS HTTP request (optional)
+    if 'body' in event:
+        event = json.loads(event['body'])
+
     experience_created = int(event['experience_created'])
+    user_id = event['user_id']
+    user_id_global = 'global'
+    user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
 
     dynamodb = boto3.resource('dynamodb', region_name=region)
 
@@ -60,48 +69,54 @@ def infer(event, context):
     data_users = response['Items']
 
     if len(data_users) == 0:
-        return {"message": "No user found",
+        print('No user found')
+        return {"statusCode": 500,
+                "body": "No user found",
                 "event": event}
-
     else:
         data_user = data_users[0]
+
+    response = table_users.query(
+                    KeyConditionExpression=Key('id').eq(user_id_global))
+    data_user_global = response['Items'][0]
 
     # Check user model details
     model_valid = False
     model_keys_expected = ['model_created', 'model_job_name',
                             'model_created_prev', 'model_job_name_prev']
 
-    if data_user.get('model'):
-        model_keys = data_user['model'].keys()
+    if data_user_global.get('model'):
+        model_keys = data_user_global['model'].keys()
 
         for k in model_keys_expected:
             if k not in model_keys:
                 break
 
         # Convert created decimal to int
-        if type(data_user['model']['model_created']) == Decimal:
-            data_user['model']['model_created'] = int(data_user['model']['model_created'])
+        if type(data_user_global['model']['model_created']) == Decimal:
+            data_user_global['model']['model_created'] = int(data_user_global['model']['model_created'])
 
-        if type(data_user['model']['model_created_prev']) == Decimal:
-            data_user['model']['model_created_prev'] = int(data_user['model']['model_created_prev'])
+        if type(data_user_global['model']['model_created_prev']) == Decimal:
+            data_user_global['model']['model_created_prev'] = int(data_user_global['model']['model_created_prev'])
 
         model_valid = True
 
     if not model_valid:
-        return {"message": "Valid model details not found",
+        print('Valid model details not found', data_user_global)
+        return {"statusCode": 500,
+                "body": "Valid model details not found",
                 "event": event}
 
-    #TODO: Clean-up all this duplicate code
-    data_user['model']['model_available'] = False
+    data_user_global['model']['model_available'] = False
 
     suf_list = ['']
-    if data_user['model']['model_created_prev'] != 'none':
+    if data_user_global['model']['model_created_prev'] != 'none':
         suf_list.append('_prev')
 
     for suf in suf_list:
         print('Attempting model suffix: ', suf_list.index(suf))
-        model_artifacts_location = os.path.join(bucket_prefix,user_id,'models',str(data_user['model']['model_created'+suf]),data_user['model']['model_job_name'+suf],'output')
-        model_prefix = 'model_' + user_id + '_' + str(data_user['model']['model_created'+suf])
+        model_artifacts_location = os.path.join(bucket_prefix,user_id_global,'models',str(data_user_global['model']['model_created'+suf]),data_user_global['model']['model_job_name'+suf],'output')
+        model_prefix = 'model_' + user_id_global + '_' + str(data_user_global['model']['model_created'+suf])
         local_file = model_prefix + '.tar.gz'
         local_file_path = file_path + local_file
         extract_path = file_path + model_prefix
@@ -112,93 +127,40 @@ def infer(event, context):
             try:
                 boto3.Session().resource('s3').Bucket(bucket).download_file(model_artifacts_location+'/model.tar.gz',local_file_path)
                 tarfile.open(local_file_path, 'r').extractall(extract_path)
-                data_user['model']['model_available'] = True
+                data_user_global['model']['model_available'] = True
             except botocore.exceptions.ClientError as e:
                 if e.response['Error']['Code'] == "404":
                     print("Primary model zip file does not exist.")
                 else:
                     raise
         else:
-            data_user['model']['model_available'] = True
+            data_user_global['model']['model_available'] = True
 
-        if data_user['model']['model_available']:
+        if data_user_global['model']['model_available']:
             print('Using model suffix: ', suf_list.index(suf))
-            data_user['model']['model_created_available'] = data_user['model']['model_created'+suf]
-            data_user['model']['model_job_name_available'] = data_user['model']['model_job_name'+suf]
-            data_user['model']['model_extract_path_available'] = extract_path
+            data_user_global['model']['model_created_available'] = data_user_global['model']['model_created'+suf]
+            data_user_global['model']['model_job_name_available'] = data_user_global['model']['model_job_name'+suf]
+            data_user_global['model']['model_extract_path_available'] = extract_path
             break
 
-    # # Attempt primary model
-    # model_artifacts_location = os.path.join(bucket_prefix,user_id,'models',str(data_user['model']['model_created']),data_user['model']['model_job_name'],'output')
-    # model_prefix = 'model_' + user_id + '_' + str(data_user['model']['model_created'])
-    # local_file = model_prefix + '.tar.gz'
-    # local_file_path = file_path + local_file
-    # extract_path = file_path + model_prefix
-    #
-    # # Only download and extract if data doesn't already exist
-    # if not os.path.exists(extract_path):
-    #     print('Downloading and extracting data: ', model_artifacts_location, local_file_path, extract_path)
-    #     try:
-    #         boto3.Session().resource('s3').Bucket(bucket).download_file(model_artifacts_location+'/model.tar.gz',local_file_path)
-    #         tarfile.open(local_file, 'r').extractall(extract_path)
-    #         data_user['model']['model_available'] = True
-    #         data_user['model']['model_created_available'] = data_user['model']['model_created']
-    #         data_user['model']['model_job_name_available'] = data_user['model']['model_job_name']
-    #         data_user['model']['model_extract_path_available'] = extract_path
-    #     except botocore.exceptions.ClientError as e:
-    #         if e.response['Error']['Code'] == "404":
-    #             print("Primary model zip file does not exist.")
-    #         else:
-    #             raise
-    # else:
-    #     data_user['model']['model_available'] = True
-    #     data_user['model']['model_created_available'] = data_user['model']['model_created']
-    #     data_user['model']['model_job_name_available'] = data_user['model']['model_job_name']
-    #     data_user['model']['model_extract_path_available'] = extract_path
-    #
-    # # Get backup model if needed
-    # if data_user['model']['model_created_prev'] != 'none' and not data_user['model']['model_available']:
-    #     model_artifacts_location = os.path.join(bucket_prefix,user_id,'models',str(data_user['model']['model_created_prev']),data_user['model']['model_job_name_prev'],'output')
-    #     model_prefix = 'model_' + user_id + '_' + str(data_user['model']['model_created_prev'])
-    #     local_file = model_prefix + '.tar.gz'
-    #     local_file_path = file_path + local_file
-    #     extract_path = file_path + model_prefix
-    #
-    #     # Only download and extract if data doesn't already exist
-    #     if not os.path.exists(extract_path):
-    #         print('Downloading and extracting data: ', model_artifacts_location, local_file_path, extract_path)
-    #         try:
-    #             boto3.Session().resource('s3').Bucket(bucket).download_file(model_artifacts_location+'/model.tar.gz',local_file_path)
-    #             tarfile.open(local_file, 'r').extractall(extract_path)
-    #             data_user['model']['model_available'] = True
-    #             data_user['model']['model_created_available'] = data_user['model']['model_created_prev']
-    #             data_user['model']['model_job_name_available'] = data_user['model']['model_job_name_prev']
-    #             data_user['model']['model_extract_path_available'] = extract_path
-    #         except botocore.exceptions.ClientError as e:
-    #             if e.response['Error']['Code'] == "404":
-    #                 print("Previous model zip file does not exist.")
-    #             else:
-    #                 raise
-    #     else:
-    #         data_user['model']['model_available'] = True
-    #         data_user['model']['model_created_available'] = data_user['model']['model_created_prev']
-    #         data_user['model']['model_job_name_available'] = data_user['model']['model_job_name_prev']
-    #         data_user['model']['model_extract_path_available'] = extract_path
-
-    if not data_user['model']['model_available']:
-        return {"message": "No model could be resolved",
+    if not data_user_global['model']['model_available']:
+        print('No model could be resolved')
+        return {"statusCode": 500,
+                "body": "No model could be resolved",
                 "event": event}
 
     # Get long path to extracted pb file
-    data_user['model']['model_pb_path_available'] = None
-    for root, dirs, files in os.walk(data_user['model']['model_extract_path_available']):
+    data_user_global['model']['model_pb_path_available'] = None
+    for root, dirs, files in os.walk(data_user_global['model']['model_extract_path_available']):
         for file in files:
             if file.endswith('.pb'):
-                data_user['model']['model_pb_path_available'] = root
+                data_user_global['model']['model_pb_path_available'] = root
                 break
 
-    if not data_user['model']['model_pb_path_available']:
-        return {"message": "Model pb path could not be resolved",
+    if not data_user_global['model']['model_pb_path_available']:
+        print('Model pb path could not be resolved')
+        return {"statusCode": 500,
+                "body": "Model pb path could not be resolved",
                 "event": event}
 
     # Retrieve experience data
@@ -210,7 +172,9 @@ def infer(event, context):
     data_experiences = response['Items']
 
     if len(data_experiences) == 0:
-        return {"message": "No experience found",
+        print('No experiences found')
+        return {"statusCode": 500,
+                "body": "No experiences found",
                 "event": event}
     else:
         data_experience = data_experiences[0]
@@ -224,7 +188,9 @@ def infer(event, context):
     data_weatherreports = response['Items']
 
     if len(data_weatherreports) == 0:
-        return {"message": "No weather report found",
+        print('No weather report found')
+        return {"statusCode": 500,
+                "body": "No weather report found",
                 "event": event}
     else:
         data_weatherreport = data_weatherreports[0]
@@ -238,7 +204,9 @@ def infer(event, context):
     data_locations = response['Items']
 
     if len(data_locations) == 0:
-        return {"message": "No location data found",
+        print('No location data found')
+        return {"statusCode": 500,
+                "body": "No location data found",
                 "event": event}
     else:
         data_location = data_locations[0]
@@ -248,7 +216,7 @@ def infer(event, context):
                                                 data_experience, data_location)
 
     # Setup model and create prediction
-    predictor_fn = predictor.from_saved_model(data_user['model']['model_pb_path_available'])
+    predictor_fn = predictor.from_saved_model(data_user_global['model']['model_pb_path_available'])
 
     predictor_input = tf.train.Example(
                                 features=tf.train.Features(
@@ -263,9 +231,11 @@ def infer(event, context):
     # Convert prediction ndarray to dict
     prediction_json = prediction_to_dict(prediction)
 
-    return {"message": "Model inferrence executed successfully",
-            "prediction": prediction_json,
-            "event": event}
+    # return {"message": "Model inferrence executed successfully",
+    #         "prediction": prediction_json,
+    #         "event": event}
+
+    return {"statusCode": 200, "body": json.dumps(prediction_json)}
 
 
 def prediction_to_dict(prediction):

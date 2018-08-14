@@ -55,6 +55,7 @@ provider:
 
 plugins:
   - serverless-python-requirements
+  - serverless-domain-manager
   # - serverless-package-common
 
 custom:
@@ -68,21 +69,21 @@ custom:
       - boto3
       - botocore
       - tensorboard
-  # packageCommon:
-  #   common:
-  #     - './common'
+
+  stage: ${opt:stage, self:provider.stage}
+  domains:
+    prod: api.wibsie.com
+    staging: staging-api.wibsie.com
+    dev: dev-api.wibsie.com
+
+  customDomain:
+    basePath: "ml"
+    domainName: ${self:custom.domains.${self:custom.stage}}
+    stage: "${self:custom.stage}"
+    createRoute53Record: true
 
 package:
   individually: true
-  # exclude:
-  #   - '**/*'
-  # include:
-  #   - '*.py'
-  #   - 'tf_funcs/*.py'
-  #   - 'data_funcs/*.py'
-  #   - pandas
-  #   - numpy
-  #   - sagemaker
 
 functions:
   train_model:
@@ -96,7 +97,6 @@ functions:
       - 'tf_funcs/*.py'
       - 'numpy'
       - 'scipy'
-      # - 'urllib3'
 
   infer_model:
     handler: infer_model.infer
@@ -108,7 +108,11 @@ functions:
       - '*.py'
       - 'tf_funcs/*.py'
       - 'numpy'
-      # - 'urllib3'
+    events:
+      - http:
+          path: infer
+          method: post
+          cors: true
 
   upload_data:
     handler: upload_data.upload_data

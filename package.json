@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "serverless-domain-manager": "^2.6.0",
     "serverless-python-requirements": "github:mikepm35/serverless-python-requirements"
   },
   "devDependencies": {

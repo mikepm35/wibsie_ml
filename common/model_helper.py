@@ -38,8 +38,8 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 #################################################################################
 
 def hash_comfort_level_result(comfort_level_result):
-    if not comfort_level_result:
-        return None
+    if not comfort_level_result or comfort_level_result.lower() == 'none':
+        return -1
 
     if type(comfort_level_result) not in [str]:
         raise Exception('hash_comfort_level_result received unexpected type')
@@ -118,16 +118,6 @@ def birth_year_to_age(birth_year):
 #################################################################################
 # Get categorical features as floats (throws exception if not found, or wrong type)
 #################################################################################
-
-def hash_comfort_level_result(comfort_level_result):
-    if type(comfort_level_result) not in [str]:
-        raise Exception('hash_comfort_level_result received unexpected type')
-
-    if comfort_level_result.lower() == 'comfortable':
-        return 1
-    else:
-        return 0
-
 
 def hash_age(age):
     """Create buckets without dependencies on external libraries, e.g pandas"""

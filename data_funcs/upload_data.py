@@ -197,7 +197,7 @@ def upload_data(event, context):
 
     # Fill all Nones
     # data['precip_type'] = data['precip_type'].fillna(value='')
-    data['comfort_level_result'] = data['comfort_level_result'].fillna(value=-1)
+    data['comfort_level_result'] = data['comfort_level_result'].fillna(value=-1) # may not be needed
 
     # Remove all rows without a label
     data = data[data['comfort_level_result'] >= 0]
