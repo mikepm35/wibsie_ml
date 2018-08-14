@@ -169,9 +169,9 @@ def upload_data(event, context):
 
     # Split into 80% train and 10% validation and 10% test
     rand_split = np.random.rand(len(data))
-    train_list = rand_split < 0.7
+    train_list = rand_split < 0.9
     # val_list = (rand_split >= 0.8) & (rand_split < 0.9)
-    test_list = rand_split >= 0.7
+    test_list = rand_split >= 0.9
 
     data_train = data[train_list]
     # data_val = data[val_list]
