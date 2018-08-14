@@ -231,10 +231,6 @@ def infer(event, context):
     # Convert prediction ndarray to dict
     prediction_json = prediction_to_dict(prediction)
 
-    # return {"message": "Model inferrence executed successfully",
-    #         "prediction": prediction_json,
-    #         "event": event}
-
     return {"statusCode": 200, "body": json.dumps(prediction_json)}
 
 

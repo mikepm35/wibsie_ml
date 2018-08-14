@@ -154,42 +154,7 @@ def upload_data(event, context):
 
         results.append(result_dict)
 
-        # # Fetch continuous representations
-        # activity_met = model_helper.activity_to_met(e['activity'])
-        #
-        # upper_clo = model_helper.upper_clothing_to_clo(e['upper_clothing'])
-        #
-        # lower_clo = model_helper.lower_clothing_to_clo(e['lower_clothing'])
-        #
-        # total_clo = upper_clo + lower_clo
-        #
-        # # Get age
-        # age = model_helper.birth_year_to_age(int(user_row['birth_year']))
-        #
-        # # Add row
-        # results.append({'age': float(age),
-        #                 'bmi': float(user_row['bmi']),
-        #                 'gender': user_row['gender'],
-        #                 'lifestyle': user_row['lifestyle'],
-        #                 'loc_type': location_row['loc_type'],
-        #                 'apparent_temperature': float(weather_row['apparentTemperature']),
-        #                 'cloud_cover': float(weather_row['cloudCover']),
-        #                 'humidity': float(weather_row['humidity']),
-        #                 'precip_intensity': float(weather_row['precipIntensity']),
-        #                 'precip_probability': float(weather_row['precipProbability']),
-        #                 'temperature': float(weather_row['temperature']),
-        #                 'wind_gust': float(weather_row['windGust']),
-        #                 'wind_speed': float(weather_row['windSpeed']),
-        #                 'precip_type': weather_row['precipType'],
-        #                 'activity_met': float(activity_met),
-        #                 'total_clo': float(total_clo),
-        #                 'comfort_level_result': e['comfort_level_result']})
-
-
-
     # Make result first column
-    # label_column = 'comfort_level_result'
-    # feature_columns = [l for l in results[0].keys() if l != label_column]
     columns = [label_column] + feature_columns
 
     data = pd.DataFrame(results)
@@ -202,44 +167,15 @@ def upload_data(event, context):
     # Remove all rows without a label
     data = data[data['comfort_level_result'] >= 0]
 
-    # # Convert categorical data to floats
-    # data['gender'] = data['gender'].apply(model_helper.hash_gender)
-    # data['lifestyle'] = data['lifestyle'].apply(model_helper.hash_lifestyle)
-    # data['loc_type'] = data['loc_type'].apply(model_helper.hash_loc_type)
-    # data['precip_type'] = data['precip_type'].apply(model_helper.hash_precip_type)
-    # data['gender'] = data['gender'].astype('category').cat.codes
-    # data['lifestyle'] = data['lifestyle'].astype('category').cat.codes
-    # data['loc_type'] = data['loc_type'].astype('category').cat.codes
-    # data['precip_type'] = data['precip_type'].astype('category').cat.codes
-
-    # Convert data to buckets and then float
-    # data['age'] = data['age'].apply(model_helper.hash_age)
-    # age_buckets = [0,18, 25, 30, 35, 40, 45, 50, 55, 60, 65,150]
-    # data['age'] = pd.cut(data.age, age_buckets, right=True).astype('category').cat.codes
-
-    # Convert label column to integer (comfortable=1)
-    # data['comfort_level_result'] = data['comfort_level_result'].apply(model_helper.hash_comfort_level_result)
-    # data['comfort_level_result'] = ((data.comfort_level_result == 'comfortable') +0)
-
     # Split into 80% train and 10% validation and 10% test
     rand_split = np.random.rand(len(data))
-    train_list = rand_split < 0.9
+    train_list = rand_split < 0.7
     # val_list = (rand_split >= 0.8) & (rand_split < 0.9)
-    test_list = rand_split >= 0.9
+    test_list = rand_split >= 0.7
 
     data_train = data[train_list]
     # data_val = data[val_list]
     data_test = data[test_list]
-
-    # # Convert to matricies (for protobuf used by sagemaker)
-    # train_y = data_train.iloc[:,0].as_matrix()
-    # train_X = data_train.iloc[:,1:].as_matrix()
-    #
-    # val_y = data_val.iloc[:,0].as_matrix()
-    # val_X = data_val.iloc[:,1:].as_matrix()
-    #
-    # test_y = data_test.iloc[:,0].as_matrix()
-    # test_X = data_test.iloc[:,1:].as_matrix()
 
     # s3 upload training file
     train_file = 'train.csv'
@@ -258,33 +194,6 @@ def upload_data(event, context):
     test_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles',str(now_epoch),test_file)
 
     boto3.Session().resource('s3').Bucket(bucket).Object(test_s3path).upload_file(file_path+test_file)
-
-    # # s3 upload training file (protobuf used by sagemaker)
-    # train_file = user_id + '_train_' + str(now_epoch) + '.data'
-    #
-    # f = io.BytesIO()
-    # smac.write_numpy_to_dense_tensor(f, train_X.astype('float32'), train_y.astype('float32'))
-    # f.seek(0)
-    #
-    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'train', train_file)).upload_fileobj(f)
-    #
-    # # s3 upload validation file
-    # val_file = user_id + '_validation_' + str(now_epoch) + '.data'
-    #
-    # f = io.BytesIO()
-    # smac.write_numpy_to_dense_tensor(f, val_X.astype('float32'), val_y.astype('float32'))
-    # f.seek(0)
-    #
-    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'validation', val_file)).upload_fileobj(f)
-    #
-    # # s3 upload test file
-    # test_file = user_id + '_test_' + str(now_epoch) + '.data'
-    #
-    # f = io.BytesIO()
-    # smac.write_numpy_to_dense_tensor(f, test_X.astype('float32'), test_y.astype('float32'))
-    # f.seek(0)
-    #
-    # boto3.Session().resource('s3').Bucket(bucket).Object(os.path.join(bucket_prefix, 'test', test_file)).upload_fileobj(f)
 
     # Update user table with latest data and optionally create model key
     if not datakey_users[user_id].get('model'):
