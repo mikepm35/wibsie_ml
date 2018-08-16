@@ -73,6 +73,7 @@ def infer(event, context):
 
     # Retrieve user info
     user_id = event['user_id']
+    experience_created = int(event['experience_created'])
     table_users = dynamodb.Table('wibsie-users-'+stage)
 
     response = table_users.query(
