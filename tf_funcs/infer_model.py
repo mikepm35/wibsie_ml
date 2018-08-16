@@ -71,20 +71,8 @@ def infer(event, context):
                     KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
     print('Config: ', config)
 
-    # Setup user for model
-    if event.get('user_id_global'):
-        print('Using event user_id: ', event['user_id_global'])
-        user_id_global = event['user_id_global']
-    elif config.get('user_id_global'):
-        print('Using config user_id: ', config['user_id_global'])
-        user_id_global = config['user_id_global']
-    else:
-        user_id_global = 'd07d5142-e07a-421c-9d90-e6c76b31ef45' #'global'
-        print('Using default user_id: ', user_id_global)
-
-    user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
-
     # Retrieve user info
+    user_id = event['user_id']
     table_users = dynamodb.Table('wibsie-users-'+stage)
 
     response = table_users.query(
@@ -99,6 +87,20 @@ def infer(event, context):
     else:
         data_user = data_users[0]
 
+    # Setup user for model
+    if event.get('user_id_global'):
+        print('Using event user_id: ', event['user_id_global'])
+        user_id_global = event['user_id_global']
+    elif config.get('user_id_global'):
+        print('Using config user_id: ', config['user_id_global'])
+        user_id_global = config['user_id_global']
+    else:
+        user_id_global = 'be1f64e0-6c1d-11e8-b0b9-e3202dfd59eb' #'global'
+        print('Using default user_id: ', user_id_global)
+
+    user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
+
+    # Retrieve model user info
     response = table_users.query(
                     KeyConditionExpression=Key('id').eq(user_id_global))
     data_user_global = response['Items'][0]
