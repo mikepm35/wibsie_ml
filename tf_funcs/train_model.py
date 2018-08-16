@@ -46,13 +46,29 @@ def train_tf(event, context):
         role = os.environ['SAGE_ROLE']
         print('SM execution role: ', sm.get_execution_role())
 
+    if event.get('warm_only'):
+        print('Warming only, exiting')
+        return {"message": "Train function exiting for warm only",
+                "event": event}
+
     print('Starting train_tf: ', role)
 
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+
+    # Get configuration parameters
+    config_stage = stage
+    if event.get('config_stage'):
+        config_stage = event['config_stage']
+        print('Overriding config_stage: ', stage, config_stage)
+
+    config = dynamodb.Table('wibsie-config').query(
+                    KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
+    print('Config: ', config)
+
+    # Setup user
     now_epoch = round(time.time()*1000)
     user_id = event['user_id']
     user_bucket = os.path.join(bucket,bucket_prefix,user_id)
-
-    dynamodb = boto3.resource('dynamodb', region_name=region)
 
     # Read model data from user
     table_users = dynamodb.Table('wibsie-users-'+stage)
@@ -78,14 +94,25 @@ def train_tf(event, context):
 
     # Create estimator
     job_name = user_id + '-job-' + str(now_epoch)
+
+    training_steps = 50
+    if config.get('training_steps'):
+        print('Overriding training_steps: ', training_steps, config['training_steps'])
+        training_steps = config['training_steps']
+
+    evaluation_steps = 10
+    if config.get('evaluation_steps'):
+        print('Overriding evaluation_steps: ', evaluation_steps, config['evaluation_steps'])
+        evaluation_steps = config['evaluation_steps']
+
     tf_estimator = TensorFlow(entry_point='model.py',
                                 role=role,
                                 output_path=model_artifacts_location,
                                 code_location=custom_code_upload_location,
                                 train_instance_count=1,
                                 train_instance_type='ml.c4.xlarge',
-                                training_steps=50,
-                                evaluation_steps=10)
+                                training_steps=training_steps,
+                                evaluation_steps=evaluation_steps)
 
     tf_estimator.fit(inputs=model_trainfiles_location,
                         wait=False,
@@ -107,28 +134,34 @@ def train_tf(event, context):
         model_job_name_prev = data_user['model']['model_job_name_prev']
 
     # Update user with model information
-    response = table_users.update_item(
-                    Key={'id': user_id},
-                    UpdateExpression="""set model.model_created=:model_created,
-                                            model.model_train_created=:model_train_created,
-                                            model.model_job_name=:model_job_name,
-                                            model.model_created_prev=:model_created_prev,
-                                            model.model_train_created_prev=:model_train_created_prev,
-                                            model.model_job_name_prev=:model_job_name_prev""",
-                    ExpressionAttributeValues={
-                        ':model_created': now_epoch,
-                        ':model_train_created': data_user['model']['train_created'],
-                        ':model_job_name': job_name,
-                        ':model_created_prev': model_created_prev,
-                        ':model_train_created_prev': model_train_created_prev,
-                        ':model_job_name_prev': model_job_name_prev
-                    },
-                    ReturnValues="UPDATED_NEW")
+    if not config.get('save_model'):
+        print('Updating user with model information')
+        response = table_users.update_item(
+                        Key={'id': user_id},
+                        UpdateExpression="""set model.model_created=:model_created,
+                                                model.model_train_created=:model_train_created,
+                                                model.model_job_name=:model_job_name,
+                                                model.model_created_prev=:model_created_prev,
+                                                model.model_train_created_prev=:model_train_created_prev,
+                                                model.model_job_name_prev=:model_job_name_prev""",
+                        ExpressionAttributeValues={
+                            ':model_created': now_epoch,
+                            ':model_train_created': data_user['model']['train_created'],
+                            ':model_job_name': job_name,
+                            ':model_created_prev': model_created_prev,
+                            ':model_train_created_prev': model_train_created_prev,
+                            ':model_job_name_prev': model_job_name_prev
+                        },
+                        ReturnValues="UPDATED_NEW")
+    else:
+        print('Not saving user with model information')
 
     # Deploy to sagemaker
-    # tf_predictor = tf_estimator.deploy(initial_instance_count=1,
-    #                                    instance_type='ml.m4.xlarge')
-    # print('Finished tf_predictor deploy')
+    if config.get('deploy_sagemaker'):
+        print('Deploying to sagemaker per config: ', job_name)
+        tf_predictor = tf_estimator.deploy(initial_instance_count=1,
+                                           instance_type='ml.m4.xlarge')
+        print('Finished tf_predictor deploy')
 
     return {"message": "Train function executed successfully",
             "event": event}

@@ -48,18 +48,41 @@ def infer(event, context):
         file_path = '/tmp/'
         #print('SM execution role: ', sm.get_execution_role()) #not needed
 
+    if event.get('warm_only'):
+        print('Warming only, exiting')
+        return {"message": "Infer function exiting for warm only",
+                "event": event}
+
     now_epoch = round(time.time()*1000)
 
     # Parse AWS HTTP request (optional)
     if 'body' in event:
         event = json.loads(event['body'])
 
-    experience_created = int(event['experience_created'])
-    user_id = event['user_id']
-    user_id_global = 'global'
-    user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
-
     dynamodb = boto3.resource('dynamodb', region_name=region)
+
+    # Get configuration parameters
+    config_stage = stage
+    if event.get('config_stage'):
+        config_stage = event['config_stage']
+        print('Overriding config_stage: ', stage, config_stage)
+
+    config = dynamodb.Table('wibsie-config').query(
+                    KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
+    print('Config: ', config)
+
+    # Setup user for model
+    if event.get('user_id_global'):
+        print('Using event user_id: ', event['user_id_global'])
+        user_id_global = event['user_id_global']
+    elif config.get('user_id_global'):
+        print('Using config user_id: ', config['user_id_global'])
+        user_id_global = config['user_id_global']
+    else:
+        user_id_global = 'd07d5142-e07a-421c-9d90-e6c76b31ef45' #'global'
+        print('Using default user_id: ', user_id_global)
+
+    user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
 
     # Retrieve user info
     table_users = dynamodb.Table('wibsie-users-'+stage)
