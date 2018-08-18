@@ -10,6 +10,7 @@ import io
 import decimal
 import time
 import json
+import decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -98,12 +99,12 @@ def train_tf(event, context):
     training_steps = 50
     if config.get('training_steps'):
         print('Overriding training_steps: ', training_steps, config['training_steps'])
-        training_steps = config['training_steps']
+        training_steps = int(config['training_steps'])
 
     evaluation_steps = 10
     if config.get('evaluation_steps'):
         print('Overriding evaluation_steps: ', evaluation_steps, config['evaluation_steps'])
-        evaluation_steps = config['evaluation_steps']
+        evaluation_steps = int(config['evaluation_steps'])
 
     tf_estimator = TensorFlow(entry_point='model.py',
                                 role=role,
