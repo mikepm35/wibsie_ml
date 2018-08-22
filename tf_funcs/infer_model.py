@@ -156,8 +156,9 @@ def infer(event, context):
                 data_user_global['model']['model_available'] = True
             except botocore.exceptions.ClientError as e:
                 if e.response['Error']['Code'] == "404":
-                    print("Primary model zip file does not exist.")
+                    print("Model zip file does not exist: ", e)
                 else:
+                    print("Model zip file download threw unexpected error: ", e)
                     raise
         else:
             data_user_global['model']['model_available'] = True
@@ -221,25 +222,48 @@ def infer(event, context):
     else:
         data_weatherreport = data_weatherreports[0]
 
-    # Get location data
-    table_locations = dynamodb.Table('wibsie-locations-'+stage)
 
-    response = table_locations.query(
-                    KeyConditionExpression=Key('zip').eq(data_experience['zip'])
-                    )
-    data_locations = response['Items']
+    # Get location loop
+    infer_loc_loops = 2
+    if config.get('infer_loc_loops'):
+        infer_loc_loops = config['infer_loc_loops']
+        print('Overriding infer_loc_loops default: ', infer_loc_loops)
 
-    if len(data_locations) == 0:
-        print('No location data found')
-        return {"statusCode": 500,
-                "body": "No location data found",
-                "event": event}
-    else:
-        data_location = data_locations[0]
+    infer_loc_sleep = 1
+    if config.get('infer_loc_sleep'):
+        infer_loc_sleep = config['infer_loc_sleep']
+        print('Overriding infer_loc_sleep default: ', infer_loc_sleep)
+
+    for i in range(0,infer_loc_loops):
+        table_locations = dynamodb.Table('wibsie-locations-'+stage)
+
+        response = table_locations.query(
+                        KeyConditionExpression=Key('zip').eq(data_experience['zip'])
+                        )
+        data_locations = response['Items']
+
+        if len(data_locations) == 0:
+            print('No location data found')
+            return {"statusCode": 500,
+                    "body": "No location data found",
+                    "event": event}
+        else:
+            data_location = data_locations[0]
+
+        if data_location.get('loc_type'):
+            break
+        else:
+            print('loc_type not defined, sleeping and trying again')
+            time.sleep(infer_loc_sleep)
 
     # Create input for model
-    model_input = model_helper.table_to_floats(data_user, data_weatherreport,
-                                                data_experience, data_location)
+    if config.get('model_type') and config['model_type'] == 'no_user':
+        print('Overriding model_type to nouser')
+        model_input = model_helper.table_to_floats_nouser(data_weatherreport,
+                                                    data_experience, data_location)
+    else:
+        model_input = model_helper.table_to_floats(data_user, data_weatherreport,
+                                                    data_experience, data_location)
 
     # Setup model and create prediction
     predictor_fn = predictor.from_saved_model(data_user_global['model']['model_pb_path_available'])

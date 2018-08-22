@@ -83,15 +83,15 @@ def train_tf(event, context):
 
     # Bucket location where generated custom TF code will be uploadeds
     custom_code_upload_location = 's3://'+user_bucket+'/tfcode/'+str(now_epoch)+'/'
-    print(custom_code_upload_location)
+    print('custom_code_upload_location: ', custom_code_upload_location)
 
     # Bucket location where results of model training are saved
     model_artifacts_location = 's3://'+user_bucket+'/models/'+str(now_epoch)+'/'
-    print(model_artifacts_location)
+    print('model_artifacts_location: ', model_artifacts_location)
 
     # Bucket location where training files are
     model_trainfiles_location = 's3://'+user_bucket+'/trainingfiles/'+str(data_user['model']['train_created'])+'/'
-    print(model_trainfiles_location)
+    print('model_trainfiles_location: ', model_trainfiles_location)
 
     # Create estimator
     job_name = user_id + '-job-' + str(now_epoch)
@@ -106,7 +106,12 @@ def train_tf(event, context):
         print('Overriding evaluation_steps: ', evaluation_steps, config['evaluation_steps'])
         evaluation_steps = int(config['evaluation_steps'])
 
-    tf_estimator = TensorFlow(entry_point='model.py',
+    entry_point = 'model.py'
+    if config.get('model_type') and config['model_type'] == 'no_user':
+        print('Overriding entry_point for no_user')
+        entry_point = 'model_nouser.py'
+
+    tf_estimator = TensorFlow(entry_point=entry_point,
                                 role=role,
                                 output_path=model_artifacts_location,
                                 code_location=custom_code_upload_location,
@@ -135,7 +140,7 @@ def train_tf(event, context):
         model_job_name_prev = data_user['model']['model_job_name_prev']
 
     # Update user with model information
-    if not config.get('save_model'):
+    if 'save_model' not in config or config['save_model'] == True:
         print('Updating user with model information')
         response = table_users.update_item(
                         Key={'id': user_id},

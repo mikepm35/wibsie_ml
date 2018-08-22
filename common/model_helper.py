@@ -33,6 +33,30 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             ]
 
 
+def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
+    """Must match the following order:
+        feature_columns = [loc_type',
+                            'apparent_temperature', 'cloud_cover', 'humidity',
+                            'precip_intensity', 'precip_probability', 'temperature',
+                            'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                            'total_clo']
+    """
+
+    return [hash_loc_type(data_location['loc_type']),
+            float(data_weatherreport['apparentTemperature']),
+            float(data_weatherreport['cloudCover']),
+            float(data_weatherreport['humidity']),
+            float(data_weatherreport['precipIntensity']),
+            float(data_weatherreport['precipProbability']),
+            float(data_weatherreport['temperature']),
+            float(data_weatherreport['windGust']),
+            float(data_weatherreport['windSpeed']),
+            hash_precip_type(data_weatherreport.get('precipType')),
+            activity_to_met(data_experience['activity']),
+            upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
+            ]
+
+
 #################################################################################
 # Get label string as integer
 #################################################################################
