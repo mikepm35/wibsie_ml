@@ -226,12 +226,12 @@ def infer(event, context):
     # Get location loop
     infer_loc_loops = 2
     if config.get('infer_loc_loops'):
-        infer_loc_loops = config['infer_loc_loops']
+        infer_loc_loops = int(config['infer_loc_loops'])
         print('Overriding infer_loc_loops default: ', infer_loc_loops)
 
     infer_loc_sleep = 1
     if config.get('infer_loc_sleep'):
-        infer_loc_sleep = config['infer_loc_sleep']
+        infer_loc_sleep = int(config['infer_loc_sleep'])
         print('Overriding infer_loc_sleep default: ', infer_loc_sleep)
 
     for i in range(0,infer_loc_loops):
