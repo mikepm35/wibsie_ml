@@ -10,7 +10,6 @@ import io
 import decimal
 import time
 import json
-import decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -131,13 +130,17 @@ def train_tf(event, context):
     if data_user['model'].get('model_created'):
         model_created_prev = data_user['model']['model_created']
 
-    model_train_created_prev = 'none'
-    if data_user['model'].get('model_train_created'):
-        model_train_created_prev = data_user['model']['model_train_created']
+    model_train_created_prev = 'none' # Prev record would need to be in upload_data
 
     model_job_name_prev = 'none'
     if data_user['model'].get('model_job_name'):
         model_job_name_prev = data_user['model']['model_job_name_prev']
+
+    model_blend_pct_prev = 'none' # Prev record would need to be in upload_data
+
+    blend_pct = decimal.Decimal(100.0)
+    if data_user['model'].get('blend_pct'):
+        blend_pct = data_user['model']['blend_pct']
 
     # Update user with model information
     if 'save_model' not in config or config['save_model'] == True:
@@ -146,6 +149,7 @@ def train_tf(event, context):
                         Key={'id': user_id},
                         UpdateExpression="""set model.model_created=:model_created,
                                                 model.model_train_created=:model_train_created,
+                                                model.model_blend_pct=:model_blend_pct,
                                                 model.model_job_name=:model_job_name,
                                                 model.model_created_prev=:model_created_prev,
                                                 model.model_train_created_prev=:model_train_created_prev,
@@ -153,6 +157,7 @@ def train_tf(event, context):
                         ExpressionAttributeValues={
                             ':model_created': now_epoch,
                             ':model_train_created': data_user['model']['train_created'],
+                            ':model_blend_pct': blend_pct,
                             ':model_job_name': job_name,
                             ':model_created_prev': model_created_prev,
                             ':model_train_created_prev': model_train_created_prev,

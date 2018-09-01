@@ -8,7 +8,7 @@ provider:
   stackTags:
     GROUP: "wibsie"
 
-  stage: prod
+  stage: dev
   region: us-east-1
 
   iamRoleStatements:
@@ -128,12 +128,12 @@ functions:
       - 'numpy'
       - 'pandas'
 
-resources:
-  Resources:
-    SageBucket:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: ${self:provider.environment.SAGE_BUCKET}
+# resources:
+#   Resources:
+#     SageBucket:
+#       Type: AWS::S3::Bucket
+#       Properties:
+#         BucketName: ${self:provider.environment.SAGE_BUCKET}
 
 
 #

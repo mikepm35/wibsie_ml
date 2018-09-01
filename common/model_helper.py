@@ -110,6 +110,8 @@ def upper_clothing_to_clo(upper_clothing):
     # Convert clothing to clo
     if upper_clothing.lower() == 'no_shirt':
         return 0.0
+    elif upper_clothing.lower() == 'tank':
+        return 0.1
     elif upper_clothing.lower() == 'short_sleeves':
         return 0.2
     elif upper_clothing.lower() == 'long_sleeves':
@@ -196,6 +198,48 @@ def hash_precip_type(precip_type):
     return float(precip_types.index(precip_type.lower())) # Throws exception if not found
 
 
+#################################################################################
+# Model utilities
+#################################################################################
+
+def model_float_equivalent(resultA, resultB):
+    """Determine if results row converted to floats are equivalent, return bool.
+    Expects result to be a dictionary with correct columns as keys."""
+
+    fail_list = []
+
+    if abs(resultA['humidity']-resultB['humidity']) > 0.2:
+        fail_list.append('humidity')
+
+    # elif abs(resultA['loc_type']-resultB['loc_type']) > 0:
+    #     fail_list.append('loc_type')
+    #
+    # elif abs(resultA['cloud_cover']-resultB['cloud_cover']) > 0.25:
+    #     fail_list.append('cloud_cover')
+
+    elif abs(int(resultA['precip_probability'])-int(resultB['precip_probability'])) > 0:
+        fail_list.append('precip_probability')
+
+    # elif abs(resultA['precip_type']-resultB['precip_type']) > 0:
+    #     fail_list.append('precip_type')
+
+    elif abs(resultA['temperature']-resultB['temperature']) > 10:
+        fail_list.append('temperature')
+
+    # elif abs(resultA['wind_speed']-resultB['wind_speed']) > 4:
+    #     fail_list.append('wind_speed')
+
+    elif abs(resultA['activity_met']-resultB['activity_met']) > 1:
+        fail_list.append('activity_met')
+
+    elif abs(resultA['total_clo']-resultB['total_clo']) > 0:
+        fail_list.append('total_clo')
+
+
+    if len(fail_list) == 0:
+        return True
+    else:
+        return False
 
 
 

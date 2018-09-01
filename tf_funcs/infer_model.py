@@ -11,6 +11,7 @@ import time
 import json
 import tarfile
 import shutil
+from distutils.version import StrictVersion as ver
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -56,8 +57,18 @@ def infer(event, context):
     now_epoch = round(time.time()*1000)
 
     # Parse AWS HTTP request (optional)
+    queryParams = None
     if 'body' in event:
+        queryParams = event.get('queryStringParameters')
         event = json.loads(event['body'])
+
+    # Load schema
+    schema = None
+    schema_obj = None
+    if queryParams and queryParams.get('schema'):
+        schema = queryParams['schema']
+        schema_obj = ver(schema)
+        print('Loaded schema version: ', schema, schema_obj)
 
     dynamodb = boto3.resource('dynamodb', region_name=region)
 
@@ -88,16 +99,44 @@ def infer(event, context):
     else:
         data_user = data_users[0]
 
+    # Determine if user has a model loaded
+    user_has_model = True
+    model_keys_expected = ['model_created', 'model_job_name']
+
+    if data_user.get('model'):
+        model_keys = data_user['model'].keys()
+
+        for k in model_keys_expected:
+            if k not in model_keys:
+                user_has_model = False
+
+    else:
+        user_has_model = False
+
     # Setup user for model
+    blend_pct = 0.0
+    print('Starting user model parse: ', event.get('user_id_global'), schema, user_has_model)
+
     if event.get('user_id_global'):
         print('Using event user_id: ', event['user_id_global'])
         user_id_global = event['user_id_global']
-    elif config.get('user_id_global'):
+
+    elif config.get('user_id_global') and config['user_id_global'] != 'user':
         print('Using config user_id: ', config['user_id_global'])
         user_id_global = config['user_id_global']
+
+    elif config.get('user_id_global') == 'user' and schema and user_has_model:
+        print('Setting user_id_global to user_id based on config')
+        user_id_global = user_id
+
+        if data_user['model'].get('model_blend_pct'):
+            blend_pct = float(data_user['model']['model_blend_pct'])
+        else:
+            blend_pct = 100.0
+
     else:
         user_id_global = 'be1f64e0-6c1d-11e8-b0b9-e3202dfd59eb' #'global'
-        print('Using default user_id: ', user_id_global)
+        print('Using default user_id: ', user_id_global, user_has_model)
 
     user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
 
@@ -106,7 +145,7 @@ def infer(event, context):
                     KeyConditionExpression=Key('id').eq(user_id_global))
     data_user_global = response['Items'][0]
 
-    # Check user model details
+    # Check user model details for actual load
     model_valid = False
     model_keys_expected = ['model_created', 'model_job_name',
                             'model_created_prev', 'model_job_name_prev']
@@ -279,13 +318,15 @@ def infer(event, context):
     print('Prediction result: ', prediction)
 
     # Convert prediction ndarray to dict
-    prediction_json = prediction_to_dict(prediction)
+    attribute_array = [{'blend': blend_pct}]
+    prediction_json = prediction_to_dict(prediction, attribute_array)
 
     return {"statusCode": 200, "body": json.dumps(prediction_json)}
 
 
-def prediction_to_dict(prediction):
+def prediction_to_dict(prediction, attribute_array):
     """Takes a prediction ndarray and converts to a list of dictionary results.
+        Also takes an array of dicts for model attributes that are appeneded to result.
         Classes are converted back to string representations.
         result = [{<class1>: <score1>, <class2>: <score2>, ...}, ...]"""
 
@@ -293,7 +334,7 @@ def prediction_to_dict(prediction):
 
     try:
         for rind in range(len(prediction['classes'])):
-            item = {}
+            item = attribute_array[rind]
             for cind in range(len(prediction['classes'][rind])):
                 cls_str = model_helper.key_comfort_level_result(int(prediction['classes'][rind][cind]))
                 item[cls_str] = float(prediction['scores'][rind][cind])
