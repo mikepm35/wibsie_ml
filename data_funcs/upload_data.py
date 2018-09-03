@@ -9,6 +9,7 @@ import io
 import decimal
 import random
 import math
+import json
 
 import pandas as pd
 # import numpy as np
@@ -28,6 +29,7 @@ def upload_data(event, context):
     if event.get('runlocal'):
         print('Running local and using environment variable placeholders')
         bucket_prefix = 'sagemaker'
+        function_prefix = 'wibsie-ml3-dev-'
         region = 'us-east-1'
         stage = 'dev'
         bucket = 'wibsie-ml3-sagebucket-' + stage
@@ -35,6 +37,7 @@ def upload_data(event, context):
     else:
         bucket = os.environ['SAGE_BUCKET']
         bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
+        function_prefix = os.environ['FUNCTION_PREFIX']
         region = os.environ['REGION']
         stage = os.environ['STAGE']
         file_path = '/tmp/'
@@ -45,6 +48,7 @@ def upload_data(event, context):
     model_data = {'now_epoch': getEpochMs()}
 
     dynamodb = boto3.resource('dynamodb', region_name=region)
+    lambdacli = boto3.client('lambda')
 
     # Get configuration parameters
     config_stage = stage
@@ -299,11 +303,23 @@ def upload_data(event, context):
 
     print('Update user succeeded')
 
+    if config.get('train_autorun') == True:
+        print('Auto-running train model per config')
+        lambdacli.invoke(
+            FunctionName=function_prefix+'train_model',
+            InvocationType='Event',
+            Payload=json.dumps({'user_id': user_id})
+        )
+
     return {"message": "Experiences uploaded",
             "train_file": train_file,
             "test_file": test_file,
             "event": event}
 
+
+#####################################################
+# Helper functions
+#####################################################
 
 def getEpochMs():
     """Helper function to current epoch int in ms"""
@@ -352,6 +368,7 @@ def parseResultsForBlending(results, blending_type, userid_map, user_id, index_i
 
     blend_pct = float(user_len) / (user_len + index_len)
     return {'results': results_new, 'blend_pct': blend_pct}
+
 
 def resampleData(data, min_sample):
     """Take original data set and append full copies until the min_sample

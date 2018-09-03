@@ -106,8 +106,13 @@ def infer(event, context):
     if data_user.get('model'):
         model_keys = data_user['model'].keys()
 
-        for k in model_keys_expected:
-            if k not in model_keys:
+        if not data_user['model'].get('model_created') or \
+        not data_user['model'].get('model_job_name') or \
+        data_user['model'].get('model_completed_prev') != 'true':
+            if not data_user['model'].get('model_created_prev') or \
+            not data_user['model'].get('model_job_name_prev') or \
+            data_user['model'].get('model_completed_prev') != 'true':
+                print('Setting user_has_model to false')
                 user_has_model = False
 
     else:

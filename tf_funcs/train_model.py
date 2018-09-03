@@ -134,13 +134,17 @@ def train_tf(event, context):
 
     model_job_name_prev = 'none'
     if data_user['model'].get('model_job_name'):
-        model_job_name_prev = data_user['model']['model_job_name_prev']
+        model_job_name_prev = data_user['model']['model_job_name']
 
     model_blend_pct_prev = 'none' # Prev record would need to be in upload_data
 
     blend_pct = decimal.Decimal(100.0)
     if data_user['model'].get('blend_pct'):
         blend_pct = data_user['model']['blend_pct']
+
+    model_completed_prev = 'none'
+    if data_user['model'].get('model_completed'):
+        model_completed_prev = data_user['model']['model_completed']
 
     # Update user with model information
     if 'save_model' not in config or config['save_model'] == True:
@@ -151,17 +155,21 @@ def train_tf(event, context):
                                                 model.model_train_created=:model_train_created,
                                                 model.model_blend_pct=:model_blend_pct,
                                                 model.model_job_name=:model_job_name,
+                                                model.model_completed=:model_completed,
                                                 model.model_created_prev=:model_created_prev,
                                                 model.model_train_created_prev=:model_train_created_prev,
-                                                model.model_job_name_prev=:model_job_name_prev""",
+                                                model.model_job_name_prev=:model_job_name_prev,
+                                                model.model_completed_prev=:model_completed_prev""",
                         ExpressionAttributeValues={
                             ':model_created': now_epoch,
                             ':model_train_created': data_user['model']['train_created'],
                             ':model_blend_pct': blend_pct,
                             ':model_job_name': job_name,
+                            ':model_completed': 'false',
                             ':model_created_prev': model_created_prev,
                             ':model_train_created_prev': model_train_created_prev,
-                            ':model_job_name_prev': model_job_name_prev
+                            ':model_job_name_prev': model_job_name_prev,
+                            ':model_completed_prev': model_completed_prev
                         },
                         ReturnValues="UPDATED_NEW")
     else:
@@ -177,5 +185,98 @@ def train_tf(event, context):
     return {"message": "Train function executed successfully",
             "event": event}
 
+
+def train_comp(event, context):
+    """Update user with model completion flag based on s3 event"""
+
+    # Read in relevant environment variables, and allow for local run
+    if event.get('runlocal'):
+        print('Running local and using environment variable placeholders')
+        bucket = 'wibsie-ml3-sagebucket-dev'
+        bucket_prefix = 'sagemaker'
+        region = 'us-east-1'
+        stage = 'dev'
+    else:
+        print('Running using importing environments')
+        bucket = os.environ['SAGE_BUCKET']
+        bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
+        region = os.environ['REGION']
+        stage = os.environ['STAGE']
+        service = os.environ['SERVICE']
+        function_prefix = os.environ['FUNCTION_PREFIX']
+
+    if event.get('warm_only'):
+        print('Warming only, exiting')
+        return {"message": "Train_comp function exiting for warm only",
+                "event": event}
+
+    print('Starting train_comp: ', event)
+
+    dynamodb = boto3.resource('dynamodb', region_name=region)
+
+    # Get configuration parameters
+    config_stage = stage
+    if event.get('config_stage'):
+        config_stage = event['config_stage']
+        print('Overriding config_stage: ', stage, config_stage)
+
+    config = dynamodb.Table('wibsie-config').query(
+                    KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
+    print('Config: ', config)
+
+    # Iterate over records for s3 events
+    for record in event['Records']:
+        key_split = record['s3']['object']['key'].split('/')
+        user_id_event = key_split[1]
+        model_created_event = decimal.Decimal(key_split[3])
+
+        # Read model data from user
+        table_users = dynamodb.Table('wibsie-users-'+stage)
+        response = table_users.query(
+                        KeyConditionExpression=Key('id').eq(user_id_event))
+        data_user = response['Items'][0]
+
+        # Get existing completed variables as starting points
+        model_completed = 'none'
+        if data_user['model'].get('model_completed'):
+            model_completed = data_user['model']['model_completed']
+
+        model_completed_prev = 'none'
+        if data_user['model'].get('model_completed_prev'):
+            model_completed_prev = data_user['model']['model_completed_prev']
+
+        # Check if completed should be updated based on event
+        update_required = False
+
+        if model_created_event==data_user['model'].get('model_created'):
+            update_required = True
+            model_completed = 'true'
+
+        elif model_created_event==data_user['model'].get('model_created_prev'):
+            update_required = True
+            model_completed_prev = 'true'
+
+        else:
+            print('WARNING - model_created_event does not match user data: ', user_id_event, model_created_event)
+
+        # Update user
+        if update_required:
+            print('Updating user based model_completed update: ', model_completed, model_completed_prev)
+            response = table_users.update_item(
+                            Key={'id': user_id_event},
+                            UpdateExpression="""set model.model_completed=:model_completed,
+                                                    model.model_completed_prev=:model_completed_prev""",
+                            ExpressionAttributeValues={
+                                ':model_completed': model_completed,
+                                ':model_completed_prev': model_completed_prev
+                            },
+                            ReturnValues="UPDATED_NEW")
+
+        else:
+            print('Not updating user due to no change on model_completeds')
+
+
+    return {"message": "User successfully updated",
+            "event": event}
 
 #

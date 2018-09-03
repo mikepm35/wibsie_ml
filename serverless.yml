@@ -100,6 +100,22 @@ functions:
       - 'numpy'
       - 'scipy'
 
+  train_comp:
+    handler: train_model.train_comp
+    events:
+      - s3:
+        bucket: ${self:provider.environment.SAGE_BUCKET}
+        event: s3:ObjectCreated:*
+        rules:
+          - suffix: .gz
+    module: tf_funcs
+    timeout: 300
+    exclude:
+      - '**/*'
+    include:
+      - '*.py'
+      - tf_funcs/*.py
+
   infer_model:
     handler: infer_model.infer
     module: tf_funcs
