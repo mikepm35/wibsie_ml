@@ -63,6 +63,7 @@ def upload_data(event, context):
     # Read in all table data (numbers are type Decimal) and organize by keys
     ##Users
     table_users = dynamodb.Table('wibsie-users-'+stage)
+    data_users_requested = None
 
     if user_id == 'global':
         response = table_users.scan()
@@ -79,6 +80,7 @@ def upload_data(event, context):
         response = table_users.query(
                         KeyConditionExpression=Key('id').eq(user_id))
         data_users = response['Items']
+        data_users_requested = response['Items'][0]
 
         response = table_users.query(
                         KeyConditionExpression=Key('id').eq(index_id))
@@ -88,10 +90,33 @@ def upload_data(event, context):
         response = table_users.query(
                         KeyConditionExpression=Key('id').eq(user_id))
         data_users = response['Items']
+        data_users_requested = response['Items'][0]
 
     datakey_users = {}
     for u in data_users:
         datakey_users[u['id']] = u
+
+    # Check to see if should skip uploading data
+    if config.get('upload_skip_mins'):
+        skip_ms = int(config['upload_skip_mins'])*60*1000
+        print('Evaluating skip upload for mins, ms: ', config['upload_skip_mins'], skip_ms)
+
+        if data_users_requested.get('model') and data_users_requested['model'].get('model_created'):
+            diff_ms = model_data['now_epoch'] - data_users_requested['model']['model_created']
+
+
+            if diff_ms <= skip_ms:
+                print('Skipping upload per diff_ms: ', diff_ms)
+                return {"message": "Skipping upload due to recent model creation: {}".format(diff_ms),
+                        "train_file": "",
+                        "test_file": "",
+                        "event": event}
+
+            else:
+                print('Proceeding with upload per diff_ms: ', diff_ms)
+
+        else:
+            print('Skipping diff eval due to no prior model timestamp')
 
     ##Experiences
     table_experiences = dynamodb.Table('wibsie-experiences-'+stage)
