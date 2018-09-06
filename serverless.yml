@@ -8,7 +8,7 @@ provider:
   stackTags:
     GROUP: "wibsie"
 
-  stage: dev
+  stage: prod
   region: us-east-1
 
   iamRoleStatements:
@@ -107,7 +107,7 @@ functions:
         bucket: ${self:provider.environment.SAGE_BUCKET}
         event: s3:ObjectCreated:*
         rules:
-          - suffix: .gz
+          - suffix: model.tar.gz
     module: tf_funcs
     timeout: 300
     exclude:
