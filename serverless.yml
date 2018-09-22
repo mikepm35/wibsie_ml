@@ -131,6 +131,10 @@ functions:
           path: infer
           method: post
           cors: true
+          authorizer:
+            arn: arn:aws:lambda:us-east-1:530583866435:function:wibsieAuthorizer
+            identitySource: method.request.header.AuthToken
+            type: request
 
   upload_data:
     handler: upload_data.upload_data
