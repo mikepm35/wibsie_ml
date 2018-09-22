@@ -205,6 +205,7 @@ def infer(event, context):
                     print("Model zip file download threw unexpected error: ", e)
                     raise
         else:
+            print('Using locally available model')
             data_user_global['model']['model_available'] = True
 
         if data_user_global['model']['model_available']:

@@ -116,8 +116,10 @@ def upper_clothing_to_clo(upper_clothing):
         return 0.2
     elif upper_clothing.lower() == 'long_sleeves':
         return 0.4
-    elif upper_clothing.lower() == 'jacket':
+    elif upper_clothing.lower() in ['jacket','light_jacket']:
         return 0.6
+    elif upper_clothing.lower() == 'heavy_jacket':
+        return 0.8
     else:
         raise Exception('Unrecognized upper clothing: ', upper_clothing)
 
