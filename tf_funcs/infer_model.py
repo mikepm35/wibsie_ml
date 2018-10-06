@@ -325,12 +325,13 @@ def infer(event, context):
 
     # Convert prediction ndarray to dict
     attribute_array = [{'blend': blend_pct}]
-    prediction_json = prediction_to_dict(prediction, attribute_array)
+    prediction_json = prediction_to_dict(prediction, attribute_array, schema_obj)
+    print('Prediction json: ', prediction_json)
 
     return {"statusCode": 200, "body": json.dumps(prediction_json)}
 
 
-def prediction_to_dict(prediction, attribute_array):
+def prediction_to_dict(prediction, attribute_array, schema_obj):
     """Takes a prediction ndarray and converts to a list of dictionary results.
         Also takes an array of dicts for model attributes that are appeneded to result.
         Classes are converted back to string representations.
@@ -340,10 +341,13 @@ def prediction_to_dict(prediction, attribute_array):
 
     try:
         for rind in range(len(prediction['classes'])):
-            item = attribute_array[rind]
+            item = attribute_array[rind].copy()
             for cind in range(len(prediction['classes'][rind])):
-                cls_str = model_helper.key_comfort_level_result(int(prediction['classes'][rind][cind]))
-                item[cls_str] = float(prediction['scores'][rind][cind])
+                cls_str = model_helper.key_comfort_level_result(int(prediction['classes'][rind][cind]), schema_obj)
+                if cls_str in item:
+                    item[cls_str] += float(prediction['scores'][rind][cind])
+                else:
+                    item[cls_str] = float(prediction['scores'][rind][cind])
 
             result.append(item)
 

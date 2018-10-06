@@ -1,4 +1,5 @@
 import datetime
+from distutils.version import StrictVersion as ver
 
 
 #################################################################################
@@ -68,19 +69,32 @@ def hash_comfort_level_result(comfort_level_result):
     if type(comfort_level_result) not in [str]:
         raise Exception('hash_comfort_level_result received unexpected type')
 
-    if comfort_level_result.lower() == 'comfortable':
-        return 1
-    else:
+    if comfort_level_result.lower() == 'uncomfortable_cold':
         return 0
+    elif comfort_level_result.lower() == 'comfortable':
+        return 1
+    elif comfort_level_result.lower() == 'uncomfortable_warm':
+        return 2
+    else:
+        raise Exception('hash_comfort_level_result received unexpected value')
 
-def key_comfort_level_result(comfort_level_result):
+
+def key_comfort_level_result(comfort_level_result, schema_obj):
     if type(comfort_level_result) not in [int]:
         raise Exception('key_comfort_level_result received unexpected type')
 
-    if comfort_level_result == 1:
+    if comfort_level_result == 2:
+        if schema_obj > '1.0':
+            return 'uncomfortable_warm'
+        else:
+            return 'uncomfortable'
+    elif comfort_level_result == 1:
         return 'comfortable'
     elif comfort_level_result == 0:
-        return 'uncomfortable'
+        if schema_obj > '1.0':
+            return 'uncomfortable_cold'
+        else:
+            return 'uncomfortable'
     else:
         raise Exception('key_comfort_level_result received unexpected comfort_level_result')
 

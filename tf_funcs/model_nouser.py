@@ -13,7 +13,7 @@ def estimator_fn(run_config, params):
     print('Running estimator_fn')
     feature_columns = [tf.feature_column.numeric_column(INPUT_TENSOR_NAME, shape=[INPUT_SHAPE])]
     return tf.estimator.LinearClassifier(feature_columns=feature_columns,
-                                          n_classes=2,
+                                          n_classes=3,
                                           config=run_config)
 
 def serving_input_fn(params):
