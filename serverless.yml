@@ -8,7 +8,7 @@ provider:
   stackTags:
     GROUP: "wibsie"
 
-  stage: dev
+  stage: prod
   region: us-east-1
 
   iamRoleStatements:
