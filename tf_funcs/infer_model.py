@@ -328,7 +328,55 @@ def infer(event, context):
     prediction_json = prediction_to_dict(prediction, attribute_array, schema_obj)
     print('Prediction json: ', prediction_json)
 
-    return {"statusCode": 200, "body": json.dumps(prediction_json)}
+    # Adds extended values to prediction result
+    prediction_json_extended = prediction_extended(prediction_json, schema_obj)
+
+    print('Prediction json extended: ', prediction_json_extended)
+
+    # Pull first value and add to experience table
+    if len(prediction_json_extended) > 1:
+        print('Skipping database storage due to len greater than 1')
+    else:
+        response = table_experiences.update_item(
+                        Key={'created': experience_created, 'user_id', user_id},
+                        UpdateExpression="""set comfort_level_prediction=:comfort_level_prediction, prediction_result=:prediction_result""",
+                        ExpressionAttributeValues={
+                            ':comfort_level_prediction': comfort_level_prediction,
+                            ':prediction_result': prediction_json_extended[0]
+                        },
+                        ReturnValues="UPDATED_NEW")
+
+        print('table_experiences updated result: ', response)
+        
+
+    return {"statusCode": 200, "body": json.dumps(prediction_json_extended)}
+
+
+def prediction_extended(prediction_json, schema_obj):
+    """Takes the list of prediction dicts and adds extended results"""
+
+    # Schema check
+    if schema_obj <= '1.0':
+        print('Skipping prediction_extended due to too low schema: ', schema_obj)
+        return prediction_json
+
+    # Iterate over results
+    for result in prediction_json:
+        # Get max key
+        max_key = max(result, key=lambda key: result[key])
+
+        # Set primary percent
+        primary_percent = 0.5 + (result[max_key]-.333)/.667*0.5
+
+        result['attributes'] = {
+            'primary_result': max_key,
+            'primary_percent': primary_percent,
+            'primary_percent_raw': result[max_key],
+            'confidence': (result[max_key]-0.333),
+            'comfort_scale': (result['uncomfortable_warm']-result['uncomfortable_cold'])
+        }
+
+    return prediction_json
 
 
 def prediction_to_dict(prediction, attribute_array, schema_obj):
