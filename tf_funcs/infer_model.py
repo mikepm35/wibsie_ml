@@ -11,6 +11,7 @@ import time
 import json
 import tarfile
 import shutil
+import copy
 from distutils.version import StrictVersion as ver
 
 import boto3
@@ -337,19 +338,42 @@ def infer(event, context):
     if len(prediction_json_extended) > 1:
         print('Skipping database storage due to len greater than 1')
     else:
+        prediction_json_decimal = prediction_decimal(prediction_json_extended)
+
         response = table_experiences.update_item(
-                        Key={'created': experience_created, 'user_id', user_id},
+                        Key={'created': experience_created, 'user_id': user_id},
                         UpdateExpression="""set comfort_level_prediction=:comfort_level_prediction, prediction_result=:prediction_result""",
                         ExpressionAttributeValues={
-                            ':comfort_level_prediction': comfort_level_prediction,
-                            ':prediction_result': prediction_json_extended[0]
+                            ':comfort_level_prediction': prediction_json_decimal[0]['comfortable'],
+                            ':prediction_result': prediction_json_decimal[0]
                         },
                         ReturnValues="UPDATED_NEW")
 
         print('table_experiences updated result: ', response)
-        
+
 
     return {"statusCode": 200, "body": json.dumps(prediction_json_extended)}
+
+
+def prediction_decimal(prediction_json):
+    """Convert all numbers in a prediction list(dict()) to decimal for dynamodb"""
+
+    new_result = []
+
+    for rind in range(len(prediction_json)):
+        result = copy.deepcopy(prediction_json[rind])
+        for key1 in result:
+            if type(result[key1]) == float:
+                result[key1] = Decimal(str(result[key1]))
+
+            elif type(result[key1]) == dict:
+                for key2 in result[key1]:
+                    if type(result[key1][key2]) == float:
+                        result[key1][key2] = Decimal(str(result[key1][key2]))
+
+        new_result.append(result)
+
+    return new_result
 
 
 def prediction_extended(prediction_json, schema_obj):
@@ -360,16 +384,26 @@ def prediction_extended(prediction_json, schema_obj):
         print('Skipping prediction_extended due to too low schema: ', schema_obj)
         return prediction_json
 
+    # Check for all keys (i.e. data uploaded before schema shift)
+    for result in prediction_json:
+        if 'uncomfortable_cold' not in result or 'uncomfortable_warm' not in result:
+            print('Skipping prediction_extended due to missing cold/warm key', result)
+            return prediction_json
+
     # Iterate over results
     for result in prediction_json:
         # Get max key
         max_key = max(result, key=lambda key: result[key])
 
+        # Pretty key
+        primary_result = pretty_comfort_result(max_key);
+
         # Set primary percent
         primary_percent = 0.5 + (result[max_key]-.333)/.667*0.5
 
         result['attributes'] = {
-            'primary_result': max_key,
+            'primary_result': primary_result,
+            'primary_result_raw': max_key,
             'primary_percent': primary_percent,
             'primary_percent_raw': result[max_key],
             'confidence': (result[max_key]-0.333),
@@ -406,7 +440,24 @@ def prediction_to_dict(prediction, attribute_array, schema_obj):
         return 'ERROR'
 
 
+def pretty_comfort_result(result):
+    """Takes variations of the comfort result and converts to a pretty response"""
 
+    if result == 'comfortable':
+        return 'Comfortable'
+
+    elif result == 'uncomfortable':
+        return 'Uncomfortable'
+
+    elif result == 'uncomfortable_warm':
+        return 'Too Warm'
+
+    elif result == 'uncomfortable_cold':
+        return 'Too Cold'
+
+    else:
+        print('Unrecognized result')
+        return 'Unknown'
 
 
 
