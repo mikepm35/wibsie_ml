@@ -354,21 +354,29 @@ def getEpochMs():
 
 
 def parseResultsForBlending(results, blending_type, userid_map, user_id, index_id):
-    """Determine blending percentage and optionally substitute index results"""
+    """Determine blending percentage and optionally substitute index results.
+    Inputs: results: (list, full blended experiences),
+            blending_type: (string),
+            userid_map: (list, user_ids for each result entry),
+            user_id: (string),
+            index_id: (string)"""
+
     user_len = 0
     index_len = 0
-    inds_to_add = [i for i in range(0,len(results))]
+    inds_to_add = [i for i in range(0,len(results))] # index is list index
     results_new = []
 
     if blending_type == 'substitute':
         print('Executing results substitution')
         inds_to_add = [] # results indicies that will get added
 
-        # Outer loop for index results
+        # Outer loop for results entries
         for io in range(0,len(results)):
+            # Check if entry is from the index and there is a result
             if userid_map[io]==index_id and results[io]['comfort_level_result'] >= 0:
                 user_match = False
-                # Inner loop for user results
+
+                # Iterate over user results to see if it matches the index result
                 for ii in range(0,len(results)):
                     if userid_map[ii]==user_id and results[ii]['comfort_level_result'] >= 0:
                         if model_helper.model_float_equivalent(results[ii], results[io]):
@@ -378,6 +386,8 @@ def parseResultsForBlending(results, blending_type, userid_map, user_id, index_i
 
                 if not user_match:
                     inds_to_add.append(io)
+                elif user_match:
+                    inds_to_add.append(ii)
 
             elif userid_map[io]==user_id and results[io]['comfort_level_result'] >= 0:
                 inds_to_add.append(io)

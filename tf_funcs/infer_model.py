@@ -355,6 +355,10 @@ def infer(event, context):
     return {"statusCode": 200, "body": json.dumps(prediction_json_extended)}
 
 
+#####################################################
+# Helper functions
+#####################################################
+
 def prediction_decimal(prediction_json):
     """Convert all numbers in a prediction list(dict()) to decimal for dynamodb"""
 
