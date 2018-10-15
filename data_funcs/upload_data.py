@@ -197,7 +197,7 @@ def upload_data(event, context):
         key = w['zip'] + str(w['expires'])
         datakey_weatherreports[key] = w
 
-    # Build a join around experiences
+    # Build a join around experiences - fields are trimmed in model*.py during train
     feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                         'apparent_temperature', 'cloud_cover', 'humidity',
                         'precip_intensity', 'precip_probability', 'temperature',
@@ -328,7 +328,7 @@ def upload_data(event, context):
 
     print('Update user succeeded')
 
-    if config.get('train_autorun') == True:
+    if config.get('train_autorun') == True and not event.get('disable_autorun'):
         print('Auto-running train model per config')
         lambdacli.invoke(
             FunctionName=function_prefix+'train_model',
@@ -339,7 +339,8 @@ def upload_data(event, context):
     return {"message": "Experiences uploaded",
             "train_file": train_file,
             "test_file": test_file,
-            "event": event}
+            "event": event,
+            "epoch": model_data['now_epoch']}
 
 
 #####################################################

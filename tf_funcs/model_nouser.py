@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 INPUT_TENSOR_NAME = 'inputs'
-INPUT_SHAPE = 12
+INPUT_SHAPE = 11
 
 
 def estimator_fn(run_config, params):
@@ -39,7 +39,7 @@ def _generate_input_fn(training_dir, training_filename):
 
     dataset = np.genfromtxt(data_file,delimiter=',',skip_header=1)
     y_data = dataset[:,0].astype(np.int)
-    x_data = dataset[:,5:].astype(np.float32)
+    x_data = dataset[:,6:].astype(np.float32)
 
     return tf.estimator.inputs.numpy_input_fn(
         x={INPUT_TENSOR_NAME: x_data},
