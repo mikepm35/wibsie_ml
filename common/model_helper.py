@@ -43,8 +43,7 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
                             'total_clo']
     """
 
-    return [hash_loc_type(data_location['loc_type']),
-            float(data_weatherreport['apparentTemperature']),
+    return [float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
             float(data_weatherreport['humidity']),
             float(data_weatherreport['precipIntensity']),

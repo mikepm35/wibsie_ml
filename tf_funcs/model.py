@@ -39,7 +39,7 @@ def _generate_input_fn(training_dir, training_filename):
 
     dataset = np.genfromtxt(data_file,delimiter=',',skip_header=1)
     y_data = dataset[:,0].astype(np.int)
-    x_data = dataset[:,2:].astype(np.float32)
+    x_data = dataset[:,1:].astype(np.float32)
 
     return tf.estimator.inputs.numpy_input_fn(
         x={INPUT_TENSOR_NAME: x_data},
