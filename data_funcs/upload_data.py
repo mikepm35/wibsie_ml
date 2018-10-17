@@ -375,20 +375,21 @@ def parseResultsForBlending(results, blending_type, userid_map, user_id, index_i
         for io in range(0,len(results)):
             # Check if entry is from the index and there is a result
             if userid_map[io]==index_id and results[io]['comfort_level_result'] >= 0:
-                user_match = False
-
                 # Iterate over user results to see if it matches the index result
+                user_matches = {}
                 for ii in range(0,len(results)):
                     if userid_map[ii]==user_id and results[ii]['comfort_level_result'] >= 0:
-                        if model_helper.model_float_equivalent(results[ii], results[io]):
-                            user_match = True
-                            print('Skipping index add due to similar user exp: ', io)
-                            break
+                        match_score = model_helper.model_float_equivalent(results[ii], results[io])
+                        if match_score >= 0:
+                            user_matches[ii] = match_score
+                            print('Found similar user exp: ', io, ii, match_score)
 
-                if not user_match:
+                if not user_matches:
                     inds_to_add.append(io)
-                elif user_match:
-                    inds_to_add.append(ii)
+                else:
+                    min_ii = min(user_matches, key=user_matches.get)
+                    print('Matching lowest score for: ', io, min_ii)
+                    inds_to_add.append(min_ii)
 
             elif userid_map[io]==user_id and results[io]['comfort_level_result'] >= 0:
                 inds_to_add.append(io)
