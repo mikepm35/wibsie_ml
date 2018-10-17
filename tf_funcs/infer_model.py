@@ -397,7 +397,7 @@ def prediction_extended(prediction_json, schema_obj):
     # Iterate over results
     for result in prediction_json:
         # Get max key
-        max_key = max(result, key=lambda key: result[key])
+        max_key = max(result, key=lambda key: result[key] if key!='blend' else -1)
 
         # Pretty key
         primary_result = pretty_comfort_result(max_key);
