@@ -17,14 +17,6 @@ from sagemaker.tensorflow import TensorFlow
 import sagemaker as sm
 # import sagemaker.amazon.common as smac
 
-# Linear containers for sagemaker algos
-LINEAR_CONTAINERS = {
-    'us-west-2': '174872318107.dkr.ecr.us-west-2.amazonaws.com/linear-learner:latest',
-    'us-east-1': '382416733822.dkr.ecr.us-east-1.amazonaws.com/linear-learner:latest',
-    'us-east-2': '404615174143.dkr.ecr.us-east-2.amazonaws.com/linear-learner:latest',
-    'eu-west-1': '438346466558.dkr.ecr.eu-west-1.amazonaws.com/linear-learner:latest',
-    'ap-northeast-1': '351501993468.dkr.ecr.ap-northeast-1.amazonaws.com/linear-learner:latest'}
-
 
 def train_tf(event, context):
     # Read in relevant environment variables, and allow for local run
@@ -35,6 +27,7 @@ def train_tf(event, context):
         region = 'us-east-1'
         stage = 'dev'
         role = 'arn:aws:iam::530583866435:role/service-role/AmazonSageMaker-ExecutionRole-20180616T150039'
+        filepath = '/Users/mmorit202/repos/wibsie_ml_lambda3/tf_funcs/'
     else:
         print('Running using importing environments')
         bucket = os.environ['SAGE_BUCKET']
@@ -44,6 +37,7 @@ def train_tf(event, context):
         service = os.environ['SERVICE']
         function_prefix = os.environ['FUNCTION_PREFIX']
         role = os.environ['SAGE_ROLE']
+        filepath = ''
         print('SM execution role: ', sm.get_execution_role())
 
     if event.get('warm_only'):
@@ -105,10 +99,10 @@ def train_tf(event, context):
         print('Overriding evaluation_steps: ', evaluation_steps, config['evaluation_steps'])
         evaluation_steps = int(config['evaluation_steps'])
 
-    entry_point = 'model.py'
+    entry_point = filepath + 'model.py'
     if config.get('model_type') and config['model_type'] == 'no_user':
         print('Overriding entry_point for no_user')
-        entry_point = 'model_nouser.py'
+        entry_point = filepath + 'model_nouser.py'
 
     tf_estimator = TensorFlow(entry_point=entry_point,
                                 role=role,
@@ -123,7 +117,7 @@ def train_tf(event, context):
                         wait=False,
                         job_name=job_name)
 
-    print('Finished tf_estimator fit call (may or may not be waiting)')
+    print('Finished tf_estimator fit call, not waiting form completion: ', job_name)
 
     # Retrieve existing model information
     model_created_prev = 'none'

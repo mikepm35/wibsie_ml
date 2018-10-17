@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 INPUT_TENSOR_NAME = 'inputs'
-INPUT_SHAPE = 16
+INPUT_SHAPE = 15
 
 
 def estimator_fn(run_config, params):

@@ -43,8 +43,7 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
                             'total_clo']
     """
 
-    return [hash_loc_type(data_location['loc_type']),
-            float(data_weatherreport['apparentTemperature']),
+    return [float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
             float(data_weatherreport['humidity']),
             float(data_weatherreport['precipIntensity']),
@@ -219,43 +218,56 @@ def hash_precip_type(precip_type):
 #################################################################################
 
 def model_float_equivalent(resultA, resultB):
-    """Determine if results row converted to floats are equivalent, return bool.
+    """Determine if results row converted to floats are equivalent.
+    Returns a score with -1 if match failed, otherwise closer to zero is better.
     Expects result to be a dictionary with correct columns as keys."""
 
     fail_list = []
 
-    if abs(resultA['humidity']-resultB['humidity']) > 0.2:
+    score = 0.0
+
+    humidty_score = float(abs(resultA['humidity']-resultB['humidity'])) / 0.2
+    score += humidty_score
+    if humidty_score > 1:
         fail_list.append('humidity')
 
-    # elif abs(resultA['loc_type']-resultB['loc_type']) > 0:
+    # if abs(resultA['loc_type']-resultB['loc_type']) > 0:
     #     fail_list.append('loc_type')
     #
-    # elif abs(resultA['cloud_cover']-resultB['cloud_cover']) > 0.25:
+    # if abs(resultA['cloud_cover']-resultB['cloud_cover']) > 0.25:
     #     fail_list.append('cloud_cover')
 
-    elif abs(int(resultA['precip_probability'])-int(resultB['precip_probability'])) > 0:
+    precip_score = abs(int(resultA['precip_probability'])-int(resultB['precip_probability']))
+    score += precip_score
+    if precip_score > 0:
         fail_list.append('precip_probability')
 
     # elif abs(resultA['precip_type']-resultB['precip_type']) > 0:
     #     fail_list.append('precip_type')
 
-    elif abs(resultA['temperature']-resultB['temperature']) > 10:
+    temp_score = float(abs(resultA['temperature']-resultB['temperature'])) / 10
+    score += temp_score
+    if temp_score > 1:
         fail_list.append('temperature')
 
     # elif abs(resultA['wind_speed']-resultB['wind_speed']) > 4:
     #     fail_list.append('wind_speed')
 
-    elif abs(resultA['activity_met']-resultB['activity_met']) > 1:
+    activity_score = abs(resultA['activity_met']-resultB['activity_met'])
+    score += activity_score
+    if activity_score > 1:
         fail_list.append('activity_met')
 
-    elif abs(resultA['total_clo']-resultB['total_clo']) > 0:
+    clo_score = abs(resultA['total_clo']-resultB['total_clo'])
+    score += clo_score
+    if clo_score> 0:
         fail_list.append('total_clo')
 
 
     if len(fail_list) == 0:
-        return True
+        return score
     else:
-        return False
+        return -1
 
 
 

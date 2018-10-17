@@ -197,7 +197,7 @@ def upload_data(event, context):
         key = w['zip'] + str(w['expires'])
         datakey_weatherreports[key] = w
 
-    # Build a join around experiences
+    # Build a join around experiences - fields are trimmed in model*.py during train
     feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                         'apparent_temperature', 'cloud_cover', 'humidity',
                         'precip_intensity', 'precip_probability', 'temperature',
@@ -328,7 +328,7 @@ def upload_data(event, context):
 
     print('Update user succeeded')
 
-    if config.get('train_autorun') == True:
+    if config.get('train_autorun') == True and not event.get('disable_autorun'):
         print('Auto-running train model per config')
         lambdacli.invoke(
             FunctionName=function_prefix+'train_model',
@@ -339,7 +339,8 @@ def upload_data(event, context):
     return {"message": "Experiences uploaded",
             "train_file": train_file,
             "test_file": test_file,
-            "event": event}
+            "event": event,
+            "epoch": model_data['now_epoch']}
 
 
 #####################################################
@@ -354,30 +355,41 @@ def getEpochMs():
 
 
 def parseResultsForBlending(results, blending_type, userid_map, user_id, index_id):
-    """Determine blending percentage and optionally substitute index results"""
+    """Determine blending percentage and optionally substitute index results.
+    Inputs: results: (list, full blended experiences),
+            blending_type: (string),
+            userid_map: (list, user_ids for each result entry),
+            user_id: (string),
+            index_id: (string)"""
+
     user_len = 0
     index_len = 0
-    inds_to_add = [i for i in range(0,len(results))]
+    inds_to_add = [i for i in range(0,len(results))] # index is list index
     results_new = []
 
     if blending_type == 'substitute':
         print('Executing results substitution')
         inds_to_add = [] # results indicies that will get added
 
-        # Outer loop for index results
+        # Outer loop for results entries
         for io in range(0,len(results)):
+            # Check if entry is from the index and there is a result
             if userid_map[io]==index_id and results[io]['comfort_level_result'] >= 0:
-                user_match = False
-                # Inner loop for user results
+                # Iterate over user results to see if it matches the index result
+                user_matches = {}
                 for ii in range(0,len(results)):
                     if userid_map[ii]==user_id and results[ii]['comfort_level_result'] >= 0:
-                        if model_helper.model_float_equivalent(results[ii], results[io]):
-                            user_match = True
-                            print('Skipping index add due to similar user exp: ', io)
-                            break
+                        match_score = model_helper.model_float_equivalent(results[ii], results[io])
+                        if match_score >= 0:
+                            user_matches[ii] = match_score
+                            print('Found similar user exp: ', io, ii, match_score)
 
-                if not user_match:
+                if not user_matches:
                     inds_to_add.append(io)
+                else:
+                    min_ii = min(user_matches, key=user_matches.get)
+                    print('Matching lowest score for: ', io, min_ii)
+                    inds_to_add.append(min_ii)
 
             elif userid_map[io]==user_id and results[io]['comfort_level_result'] >= 0:
                 inds_to_add.append(io)
