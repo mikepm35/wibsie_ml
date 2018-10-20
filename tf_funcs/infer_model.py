@@ -367,7 +367,7 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0):
             'weatherreport': {
                 'apparentTemperature': <float>,
                 'cloudCover': <float>,
-                'humidity': <float>,
+                'humidity': <float>, # converted to humidity_temp
                 'precipIntensity': <float>,
                 'precipProbability': <float>,
                 'temperature': <float>,

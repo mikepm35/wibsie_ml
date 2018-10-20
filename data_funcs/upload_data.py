@@ -199,7 +199,7 @@ def upload_data(event, context):
 
     # Build a join around experiences - fields are trimmed in model*.py during train
     feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
-                        'apparent_temperature', 'cloud_cover', 'humidity',
+                        'apparent_temperature', 'cloud_cover', 'humidity_temp',
                         'precip_intensity', 'precip_probability', 'temperature',
                         'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                         'total_clo']
@@ -453,7 +453,7 @@ def generateRandomDataLists(data, split):
     data_sorted['ind_data'] = data_sorted.index
     data_sorted['sortkey'] = -1
     for index, row in data_sorted.iterrows():
-        sortval = row['temperature'] + row['humidity']*50 + row['activity_met']*10 + row['total_clo']*100
+        sortval = row['temperature'] + row['humidity_temp']*50 + row['activity_met']*10 + row['total_clo']*100
         data_sorted.set_value(index,'sortkey',sortval)
 
     # Create sorted data
