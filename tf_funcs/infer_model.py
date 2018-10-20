@@ -121,7 +121,7 @@ def infer(event, context):
 
     # Setup user for model
     blend_pct = 0.0
-    print('Starting user model parse: ', event.get('user_id_global'), schema, user_has_model)
+    print('Starting user model parse: ', event.get('user_id_global'), config.get('user_id_global'), schema, user_has_model)
 
     if event.get('user_id_global'):
         print('Using event user_id: ', event['user_id_global'])
@@ -353,6 +353,107 @@ def infer(event, context):
 
 
     return {"statusCode": 200, "body": json.dumps(prediction_json_extended)}
+
+
+#####################################################
+# Test functions
+#####################################################
+
+def infer_model_direct(schema_str, stage, data, blend_pct=0):
+    """Infer model with directly passing in all required experience/user data.
+    Still downloads model to test.
+    Expects data in the form of:
+        data = {
+            'weatherreport': {
+                'apparentTemperature': <float>,
+                'cloudCover': <float>,
+                'humidity': <float>,
+                'precipIntensity': <float>,
+                'precipProbability': <float>,
+                'temperature': <float>,
+                'windGust': <float>,
+                'windSpeed': <float>,
+                'precipType': <str or None>
+            },
+            'experience': {
+                'activity': <str>,
+                'upper_clothing': <str>,
+                'lower_clothing': <str>
+            },
+            'location': {},
+            'user': {
+                'user_id': <str>,
+                'model_created': <str>,
+                'model_job_name': <str>
+            }
+        }
+    """
+
+    # Configuration variables
+    bucket = 'wibsie-ml3-sagebucket-'+stage
+    bucket_prefix = 'sagemaker'
+    region = 'us-east-1'
+    file_path = ''
+    schema_obj = ver(schema_str)
+
+    # Setup filesystem information
+    model_artifacts_location = os.path.join(bucket_prefix,data['user']['user_id'],'models',data['user']['model_created'],data['user']['model_job_name'],'output')
+    model_prefix = 'model_' + data['user']['user_id'] + '_' + data['user']['model_created']
+    local_file = model_prefix + '.tar.gz'
+    local_file_path = file_path + local_file
+    extract_path = file_path + model_prefix
+
+    # Only download and extract if data doesn't already exist
+    if not os.path.exists(extract_path):
+        print('Downloading and extracting data: ', model_artifacts_location, local_file_path, extract_path)
+        try:
+            boto3.Session().resource('s3').Bucket(bucket).download_file(model_artifacts_location+'/model.tar.gz',local_file_path)
+            tarfile.open(local_file_path, 'r').extractall(extract_path)
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                print("Model zip file does not exist: ", e)
+            else:
+                print("Model zip file download threw unexpected error: ", e)
+                raise
+    else:
+        print('Using locally available model')
+
+    # Get long path to extracted pb file
+    model_pb_path_available = None
+    for root, dirs, files in os.walk(extract_path):
+        for file in files:
+            if file.endswith('.pb'):
+                model_pb_path_available = root
+                break
+
+    # Convert data to model inputs
+    model_input = model_helper.table_to_floats_nouser(data['weatherreport'],
+                                                data['experience'], data['location'])
+
+    # Setup model and create prediction
+    predictor_fn = predictor.from_saved_model(model_pb_path_available)
+
+    predictor_input = tf.train.Example(
+                                features=tf.train.Features(
+                                feature={"inputs": tf.train.Feature(
+                                float_list=tf.train.FloatList(value=model_input))}))
+
+    predictor_string = predictor_input.SerializeToString()
+
+    prediction = predictor_fn({"inputs": [predictor_string]})
+    print('Prediction result: ', prediction)
+
+    # Convert prediction ndarray to dict
+    attribute_array = [{'blend': blend_pct}]
+    prediction_json = prediction_to_dict(prediction, attribute_array, schema_obj)
+    print('Prediction json: ', prediction_json)
+
+    # Adds extended values to prediction result
+    prediction_json_extended = prediction_extended(prediction_json, schema_obj)
+
+    print('Prediction json extended: ', prediction_json_extended)
+
+    return prediction_json_extended
 
 
 #####################################################
