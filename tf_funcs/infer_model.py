@@ -371,7 +371,7 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0):
                 'precipIntensity': <float>,
                 'precipProbability': <float>,
                 'temperature': <float>,
-                'windGust': <float>,
+                'windGust': <float>,  # converted to burst
                 'windSpeed': <float>,
                 'precipType': <str or None>
             },

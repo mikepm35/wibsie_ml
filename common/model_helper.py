@@ -11,7 +11,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity',
                             'precip_intensity', 'precip_probability', 'temperature',
-                            'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                            'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                             'total_clo']
     """
 
@@ -26,7 +26,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust']),
+            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
@@ -39,7 +39,7 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
         feature_columns = [loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity',
                             'precip_intensity', 'precip_probability', 'temperature',
-                            'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                            'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                             'total_clo']
     """
 
@@ -49,7 +49,7 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust']),
+            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),

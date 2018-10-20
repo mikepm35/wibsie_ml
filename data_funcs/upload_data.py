@@ -201,7 +201,7 @@ def upload_data(event, context):
     feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                         'apparent_temperature', 'cloud_cover', 'humidity',
                         'precip_intensity', 'precip_probability', 'temperature',
-                        'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                        'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                         'total_clo']
     label_column = 'comfort_level_result'
     results = []
