@@ -101,23 +101,24 @@ def infer(event, context):
         data_user = data_users[0]
 
     # Determine if user has a model loaded
-    user_has_model = True
-    model_keys_expected = ['model_created', 'model_job_name']
+    user_has_model = False
 
     if data_user.get('model'):
-        model_keys = data_user['model'].keys()
+        if data_user['model'].get('model_created') and \
+        data_user['model'].get('model_completed') and \
+        data_user['model']['model_completed'] == 'true':
+            user_has_model = True
 
-        if not data_user['model'].get('model_created') or \
-        not data_user['model'].get('model_job_name') or \
-        data_user['model'].get('model_completed_prev') != 'true':
-            if not data_user['model'].get('model_created_prev') or \
-            not data_user['model'].get('model_job_name_prev') or \
-            data_user['model'].get('model_completed_prev') != 'true':
-                print('Setting user_has_model to false')
-                user_has_model = False
+        elif data_user['model'].get('model_created_prev') and \
+        data_user['model'].get('model_completed_prev') and \
+        data_user['model']['model_completed_prev'] == 'true':
+            user_has_model = True
+
+        else:
+            print('No completed model found')
 
     else:
-        user_has_model = False
+        print('Model key is not loaded for user')
 
     # Setup user for model
     blend_pct = 0.0
