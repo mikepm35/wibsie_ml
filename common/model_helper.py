@@ -9,9 +9,9 @@ from distutils.version import StrictVersion as ver
 def table_to_floats(data_user, data_weatherreport, data_experience, data_location):
     """Must match the following order:
         feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
-                            'apparent_temperature', 'cloud_cover', 'humidity',
+                            'apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
-                            'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                            'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                             'total_clo']
     """
 
@@ -22,11 +22,11 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             hash_loc_type(data_location['loc_type']),
             float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
-            float(data_weatherreport['humidity']),
+            float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100),
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust']),
+            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
@@ -37,19 +37,19 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
     """Must match the following order:
         feature_columns = [loc_type',
-                            'apparent_temperature', 'cloud_cover', 'humidity',
+                            'apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
-                            'wind_gust', 'wind_speed', 'precip_type', 'activity_met',
+                            'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                             'total_clo']
     """
 
     return [float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
-            float(data_weatherreport['humidity']),
+            float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100),
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust']),
+            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
@@ -226,10 +226,10 @@ def model_float_equivalent(resultA, resultB):
 
     score = 0.0
 
-    humidty_score = float(abs(resultA['humidity']-resultB['humidity'])) / 0.2
+    humidty_score = float(abs(resultA['humidity_temp']-resultB['humidity_temp'])) / 0.2
     score += humidty_score
     if humidty_score > 1:
-        fail_list.append('humidity')
+        fail_list.append('humidity_temp')
 
     # if abs(resultA['loc_type']-resultB['loc_type']) > 0:
     #     fail_list.append('loc_type')

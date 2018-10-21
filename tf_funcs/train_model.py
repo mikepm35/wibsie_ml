@@ -87,7 +87,7 @@ def train_tf(event, context):
     print('model_trainfiles_location: ', model_trainfiles_location)
 
     # Create estimator
-    job_name = user_id + '-job-' + str(now_epoch)
+    job_name = user_id + '-' + stage + '-job-' + str(now_epoch)
 
     training_steps = 50
     if config.get('training_steps'):
