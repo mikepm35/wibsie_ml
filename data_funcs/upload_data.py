@@ -31,9 +31,15 @@ def upload_data(event, context):
         bucket_prefix = 'sagemaker'
         function_prefix = 'wibsie-ml3-dev-'
         region = 'us-east-1'
-        stage = 'dev'
-        bucket = 'wibsie-ml3-sagebucket-' + stage
         file_path = ''
+
+        stage = 'dev'
+        if event.get('stage'):
+            print('using event stage:', event['stage'])
+            stage = event['stage']
+
+        bucket = 'wibsie-ml3-sagebucket-' + stage
+
     else:
         bucket = os.environ['SAGE_BUCKET']
         bucket_prefix = os.environ['SAGE_BUCKET_PREFIX']
@@ -226,10 +232,16 @@ def upload_data(event, context):
             weather_row['precipType'] = None
 
         # Get float representation and convert to dict for pandas
+        model_overrides = {}
+        if config.get('model_overrides'):
+            print('Found model_overrides:', config['model_overrides'])
+            model_overrides = config['model_overrides']
+
         float_list = model_helper.table_to_floats(data_user=user_row,
                                                 data_weatherreport=weather_row,
                                                 data_experience=e,
-                                                data_location=location_row)
+                                                data_location=location_row,
+                                                overrides=model_overrides)
 
         result_dict = {}
         for i in range(0,len(feature_columns)):
@@ -306,8 +318,13 @@ def upload_data(event, context):
     model_data['blend_pct'] = decimal.Decimal(str(model_data['blend_pct']))
     print('model_data after decimal: ', model_data)
 
+    table_users_upload = table_users
+    if event.get('upload_stage'):
+        table_users_upload = dynamodb.Table('wibsie-users-'+event['upload_stage'])
+        print('Overriding upload stage: ', stage, event['upload_stage'])
+
     if not datakey_users[user_id].get('model'):
-        response = table_users.update_item(
+        response = table_users_upload.update_item(
                         Key={'id': user_id},
                         UpdateExpression="""set model=:model""",
                         ExpressionAttributeValues={
@@ -317,7 +334,7 @@ def upload_data(event, context):
                         ReturnValues="UPDATED_NEW")
 
     else:
-        response = table_users.update_item(
+        response = table_users_upload.update_item(
                         Key={'id': user_id},
                         UpdateExpression="""set model.train_created=:train_created, model.blend_pct=:blend_pct""",
                         ExpressionAttributeValues={
