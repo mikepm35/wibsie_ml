@@ -304,13 +304,20 @@ def infer(event, context):
             time.sleep(infer_loc_sleep)
 
     # Create input for model
+    model_overrides = {}
+    if config.get('model_overrides'):
+        print('Found model_overrides:', config['model_overrides'])
+        model_overrides = config['model_overrides']
+
     if config.get('model_type') and config['model_type'] == 'no_user':
         print('Overriding model_type to nouser')
         model_input = model_helper.table_to_floats_nouser(data_weatherreport,
-                                                    data_experience, data_location)
+                                                    data_experience, data_location,
+                                                    model_overrides)
     else:
         model_input = model_helper.table_to_floats(data_user, data_weatherreport,
-                                                    data_experience, data_location)
+                                                    data_experience, data_location,
+                                                    model_overrides)
 
     # Setup model and create prediction
     predictor_fn = predictor.from_saved_model(data_user_global['model']['model_pb_path_available'])
@@ -360,7 +367,7 @@ def infer(event, context):
 # Test functions
 #####################################################
 
-def infer_model_direct(schema_str, stage, data, blend_pct=0):
+def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=None):
     """Infer model with directly passing in all required experience/user data.
     Still downloads model to test.
     Expects data in the form of:
@@ -429,7 +436,8 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0):
 
     # Convert data to model inputs
     model_input = model_helper.table_to_floats_nouser(data['weatherreport'],
-                                                data['experience'], data['location'])
+                                                data['experience'], data['location'],
+                                                model_overrides)
 
     # Setup model and create prediction
     predictor_fn = predictor.from_saved_model(model_pb_path_available)
@@ -482,7 +490,7 @@ def prediction_decimal(prediction_json):
     return new_result
 
 
-def prediction_extended(prediction_json, schema_obj):
+def prediction_extended(prediction_json, schema_obj, prediction_type=None):
     """Takes the list of prediction dicts and adds extended results"""
 
     # Schema check
@@ -507,13 +515,38 @@ def prediction_extended(prediction_json, schema_obj):
         # Set primary percent
         primary_percent = 0.5 + (result[max_key]-.333)/.667*0.5
 
+        # Comfort scale ranges -1 to 1, comfort ~ -0.67 to 0.67
+        comfort_scale = result['uncomfortable_warm']-result['uncomfortable_cold']
+
+        # Confidence on a scale from 0 to 1
+        confidence = (result[max_key]-0.333) / 0.68
+
+        # Process config
+        context = 'none'
+        if prediction_type and prediction_type.startswith('comfort_scale_'):
+            scale_split = float(prediction_type.split('_')[2]) / 100
+
+            print('Processing prediction_type comfort_scale:', prediction_type, scale_split)
+
+            if primary_percent_raw <= scale_split:
+                print('Using comfort_scale for primary_result')
+                context = 'comfort_scale'
+                if comfort_scale < -0.333:
+                    primary_result = pretty_comfort_result('uncomfortable_cold')
+                elif comfort_scale <= 0.34:
+                    primary_result = pretty_comfort_result('comfortable')
+                else:
+                    primary_result = pretty_comfort_result('uncomfortable_warm')
+
+
         result['attributes'] = {
             'primary_result': primary_result,
             'primary_result_raw': max_key,
             'primary_percent': primary_percent,
             'primary_percent_raw': result[max_key],
-            'confidence': (result[max_key]-0.333),
-            'comfort_scale': (result['uncomfortable_warm']-result['uncomfortable_cold'])
+            'confidence': confidence,
+            'comfort_scale': comfort_scale,
+            'context': context
         }
 
     return prediction_json

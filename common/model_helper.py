@@ -6,7 +6,7 @@ from distutils.version import StrictVersion as ver
 # Convert table definitions to float list
 #################################################################################
 
-def table_to_floats(data_user, data_weatherreport, data_experience, data_location):
+def table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides):
     """Must match the following order:
         feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity_temp',
@@ -15,6 +15,24 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
                             'total_clo']
     """
 
+    # Process overrides
+    windGust = float(data_weatherreport['windGust'])
+    if 'windGust' in overrides:
+        print('Processing windGust overrides:', overrides['windGust'])
+        if overrides['windGust'] == 'windBurst':
+            windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
+        elif overrides['windGust'] == 'null':
+            windGust = float(1.0)
+
+    humidity = float(data_weatherreport['humidity'])
+    if 'humidity' in overrides:
+        print('Processing humidity overrides:', overrides['humidity'])
+        if overrides['humidity'] == 'temp_multiply':
+            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
+        elif overrides['humidity'] == 'temp_add':
+            humidity = float(data_weatherreport['humidity']) + (float(data_weatherreport['apparentTemperature']) / 100)
+
+
     return [hash_age(birth_year_to_age(int(data_user['birth_year']))),
             float(data_user['bmi']),
             hash_gender(data_user['gender']),
@@ -22,11 +40,11 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             hash_loc_type(data_location['loc_type']),
             float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
-            float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100),
+            humidity,
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
+            windGust,
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
@@ -34,7 +52,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             ]
 
 
-def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
+def table_to_floats_nouser(data_weatherreport, data_experience, data_location, overrides={}):
     """Must match the following order:
         feature_columns = [loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity_temp',
@@ -43,13 +61,31 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location):
                             'total_clo']
     """
 
+    # Process overrides
+    windGust = float(data_weatherreport['windGust'])
+    if 'windGust' in overrides:
+        print('Processing windGust overrides:', overrides['windGust'])
+        if overrides['windGust'] == 'windBurst':
+            windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
+        elif overrides['windGust'] == 'null':
+            windGust = float(1.0)
+
+    humidity = float(data_weatherreport['humidity'])
+    if 'humidity' in overrides:
+        print('Processing humidity overrides:', overrides['humidity'])
+        if overrides['humidity'] == 'temp_multiply':
+            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
+        elif overrides['humidity'] == 'temp_add':
+            humidity = float(data_weatherreport['humidity']) + (float(data_weatherreport['apparentTemperature']) / 100)
+
+
     return [float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
-            float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100),
+            humidity,
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
-            float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed']),
+            windGust,
             float(data_weatherreport['windSpeed']),
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
