@@ -1,5 +1,6 @@
 import datetime
 from distutils.version import StrictVersion as ver
+import math
 
 
 #################################################################################
@@ -7,7 +8,7 @@ from distutils.version import StrictVersion as ver
 #################################################################################
 
 def table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides):
-    """Must match the following order:
+    """Must output the following order:
         feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
@@ -23,6 +24,24 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
         elif overrides['windGust'] == 'null':
             windGust = float(1.0)
+        elif overrides['windGust'] == 'sqrt':
+            windGust = math.sqrt(data_weatherreport['windGust']) # returns float
+        elif overrides['windGust'] == 'ln':
+            windGust = math.log(data_weatherreport['windGust'] + 1)
+        else:
+            print('Ignoring windGust override')
+
+    windSpeed = float(data_weatherreport['windSpeed'])
+    if 'windSpeed' in overrides:
+        print('Processing windSpeed overrides:', overrides['windSpeed'])
+        if overrides['windSpeed'] == 'null':
+            windSpeed = float(1.0)
+        elif overrides['windSpeed'] == 'sqrt':
+            windSpeed = math.sqrt(data_weatherreport['windSpeed']) # returns float
+        elif overrides['windSpeed'] == 'ln':
+            windSpeed = math.log(data_weatherreport['windSpeed'] + 1)
+        else:
+            print('Ignoring windSpeed override')
 
     humidity = float(data_weatherreport['humidity'])
     if 'humidity' in overrides:
@@ -31,6 +50,8 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
         elif overrides['humidity'] == 'temp_add':
             humidity = float(data_weatherreport['humidity']) + (float(data_weatherreport['apparentTemperature']) / 100)
+        else:
+            print('Ignoring humidity override')
 
 
     return [hash_age(birth_year_to_age(int(data_user['birth_year']))),
@@ -45,7 +66,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             float(data_weatherreport['precipProbability']),
             float(data_weatherreport['temperature']),
             windGust,
-            float(data_weatherreport['windSpeed']),
+            windSpeed,
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
             upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
@@ -53,44 +74,29 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
 
 def table_to_floats_nouser(data_weatherreport, data_experience, data_location, overrides={}):
-    """Must match the following order:
-        feature_columns = [loc_type',
-                            'apparent_temperature', 'cloud_cover', 'humidity_temp',
+    """Must output the following order:
+        feature_columns = ['apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
                             'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
                             'total_clo']
     """
 
-    # Process overrides
-    windGust = float(data_weatherreport['windGust'])
-    if 'windGust' in overrides:
-        print('Processing windGust overrides:', overrides['windGust'])
-        if overrides['windGust'] == 'windBurst':
-            windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
-        elif overrides['windGust'] == 'null':
-            windGust = float(1.0)
+    withuser = table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides)
 
-    humidity = float(data_weatherreport['humidity'])
-    if 'humidity' in overrides:
-        print('Processing humidity overrides:', overrides['humidity'])
-        if overrides['humidity'] == 'temp_multiply':
-            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
-        elif overrides['humidity'] == 'temp_add':
-            humidity = float(data_weatherreport['humidity']) + (float(data_weatherreport['apparentTemperature']) / 100)
+    return withuser[-5:]
 
-
-    return [float(data_weatherreport['apparentTemperature']),
-            float(data_weatherreport['cloudCover']),
-            humidity,
-            float(data_weatherreport['precipIntensity']),
-            float(data_weatherreport['precipProbability']),
-            float(data_weatherreport['temperature']),
-            windGust,
-            float(data_weatherreport['windSpeed']),
-            hash_precip_type(data_weatherreport.get('precipType')),
-            activity_to_met(data_experience['activity']),
-            upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
-            ]
+    # return [float(data_weatherreport['apparentTemperature']),
+    #         float(data_weatherreport['cloudCover']),
+    #         humidity,
+    #         float(data_weatherreport['precipIntensity']),
+    #         float(data_weatherreport['precipProbability']),
+    #         float(data_weatherreport['temperature']),
+    #         windGust,
+    #         float(data_weatherreport['windSpeed']),
+    #         hash_precip_type(data_weatherreport.get('precipType')),
+    #         activity_to_met(data_experience['activity']),
+    #         upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
+    #         ]
 
 
 #################################################################################

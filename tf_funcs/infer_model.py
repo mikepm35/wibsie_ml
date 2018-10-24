@@ -338,7 +338,13 @@ def infer(event, context):
     print('Prediction json: ', prediction_json)
 
     # Adds extended values to prediction result
-    prediction_json_extended = prediction_extended(prediction_json, schema_obj)
+    prediction_type = None
+    if config.get('prediction_type'):
+        print('Reading prediction_type from config:', config['prediction_type'])
+        prediction_type = config['prediction_type']
+
+    prediction_json_extended = prediction_extended(prediction_json, schema_obj,
+                                                    prediction_type)
 
     print('Prediction json extended: ', prediction_json_extended)
 
@@ -367,7 +373,7 @@ def infer(event, context):
 # Test functions
 #####################################################
 
-def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=None):
+def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=None, prediction_type=None):
     """Infer model with directly passing in all required experience/user data.
     Still downloads model to test.
     Expects data in the form of:
@@ -458,7 +464,7 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     print('Prediction json: ', prediction_json)
 
     # Adds extended values to prediction result
-    prediction_json_extended = prediction_extended(prediction_json, schema_obj)
+    prediction_json_extended = prediction_extended(prediction_json, schema_obj, prediction_type)
 
     print('Prediction json extended: ', prediction_json_extended)
 
@@ -508,6 +514,7 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
     for result in prediction_json:
         # Get max key
         max_key = max(result, key=lambda key: result[key] if key!='blend' else -1)
+        primary_percent_raw = result[max_key]
 
         # Pretty key
         primary_result = pretty_comfort_result(max_key);
@@ -543,7 +550,7 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
             'primary_result': primary_result,
             'primary_result_raw': max_key,
             'primary_percent': primary_percent,
-            'primary_percent_raw': result[max_key],
+            'primary_percent_raw': primary_percent_raw,
             'confidence': confidence,
             'comfort_scale': comfort_scale,
             'context': context

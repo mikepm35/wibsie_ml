@@ -39,6 +39,9 @@ def upload_data(event, context):
             stage = event['stage']
 
         bucket = 'wibsie-ml3-sagebucket-' + stage
+        if event.get('upload_stage'):
+            print('using upload_stage for bucket')
+            bucket = 'wibsie-ml3-sagebucket-' + event['upload_stage']
 
     else:
         bucket = os.environ['SAGE_BUCKET']
