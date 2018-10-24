@@ -106,7 +106,7 @@ def upload_data(event, context):
         datakey_users[u['id']] = u
 
     # Check to see if should skip uploading data
-    if config.get('upload_skip_mins'):
+    if config.get('upload_skip_mins') and not event.get('ignore_skip'):
         skip_ms = int(config['upload_skip_mins'])*60*1000
         print('Evaluating skip upload for mins, ms: ', config['upload_skip_mins'], skip_ms)
 

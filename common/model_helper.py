@@ -53,12 +53,15 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         else:
             print('Ignoring humidity override')
 
+    list_user = []
+    if data_user:
+        list_user = [hash_age(birth_year_to_age(int(data_user['birth_year']))),
+                float(data_user['bmi']),
+                hash_gender(data_user['gender']),
+                hash_lifestyle(data_user['lifestyle'])]
 
-    return [hash_age(birth_year_to_age(int(data_user['birth_year']))),
-            float(data_user['bmi']),
-            hash_gender(data_user['gender']),
-            hash_lifestyle(data_user['lifestyle']),
-            hash_loc_type(data_location['loc_type']),
+
+    return list_user + [hash_loc_type(data_location['loc_type']),
             float(data_weatherreport['apparentTemperature']),
             float(data_weatherreport['cloudCover']),
             humidity,
@@ -81,22 +84,13 @@ def table_to_floats_nouser(data_weatherreport, data_experience, data_location, o
                             'total_clo']
     """
 
-    withuser = table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides)
+    float_list = table_to_floats(data_user={},
+                                data_weatherreport=data_weatherreport,
+                                data_experience=data_experience,
+                                data_location=data_location,
+                                overrides=overrides)
 
-    return withuser[-5:]
-
-    # return [float(data_weatherreport['apparentTemperature']),
-    #         float(data_weatherreport['cloudCover']),
-    #         humidity,
-    #         float(data_weatherreport['precipIntensity']),
-    #         float(data_weatherreport['precipProbability']),
-    #         float(data_weatherreport['temperature']),
-    #         windGust,
-    #         float(data_weatherreport['windSpeed']),
-    #         hash_precip_type(data_weatherreport.get('precipType')),
-    #         activity_to_met(data_experience['activity']),
-    #         upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
-    #         ]
+    return float_list[1:] # -1 to remove location
 
 
 #################################################################################
