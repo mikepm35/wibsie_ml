@@ -40,18 +40,63 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             windSpeed = math.sqrt(data_weatherreport['windSpeed']) # returns float
         elif overrides['windSpeed'] == 'ln':
             windSpeed = math.log(data_weatherreport['windSpeed'] + 1)
+        elif overrides['windSpeed'] == 'quarters':
+            if 0.0 <= windSpeed < 5.0:
+                windSpeed = 0.0
+            elif 5.0 <= windSpeed < 10.0:
+                windSpeed = 1.0
+            elif 10.0 <= windSpeed < 15.0:
+                windSpeed = 2.0
+            elif windSpeed >= 15.0:
+                windSpeed = 3.0
+        elif overrides['windSpeed'] == 'thirds':
+            if 0.0 <= windSpeed < 7.5:
+                windSpeed = 0.0
+            elif 7.5 <= windSpeed < 15.0:
+                windSpeed = 1.0
+            elif windSpeed >= 15.0:
+                windSpeed = 2.0
         else:
             print('Ignoring windSpeed override')
 
     humidity = float(data_weatherreport['humidity'])
     if 'humidity' in overrides:
         print('Processing humidity overrides:', overrides['humidity'])
-        if overrides['humidity'] == 'temp_multiply':
+        if overrides['humidity'] == 'apptemp_multiply':
             humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
-        elif overrides['humidity'] == 'temp_add':
+        elif overrides['humidity'] == 'temp_multiply':
+            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['temperature']) / 100)
+        elif overrides['humidity'] == 'apptemp_add':
             humidity = float(data_weatherreport['humidity']) + (float(data_weatherreport['apparentTemperature']) / 100)
         else:
             print('Ignoring humidity override')
+
+    cloudCover = float(data_weatherreport['cloudCover'])
+    if 'cloudCover' in overrides:
+        print('Processing cloudCover overrides:', overrides['cloudCover'])
+        if overrides['cloudCover'] == 'apptemp_multiply':
+            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
+        elif overrides['cloudCover'] == 'temp_multiply':
+            humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['temperature']) / 100)
+        elif overrides['cloudCover'] == 'quarters':
+            if 0.0 <= cloudCover < 0.25:
+                cloudCover = 0.0
+            elif 0.25 <= cloudCover < 0.5:
+                cloudCover = 1.0
+            elif 0.5 <= cloudCover < 0.75:
+                cloudCover = 2.0
+            elif cloudCover >= 0.75:
+                cloudCover = 3.0
+        elif overrides['cloudCover'] == 'thirds':
+            if 0.0 <= cloudCover < 0.333:
+                cloudCover = 0.0
+            elif 0.333 <= cloudCover < 0.667:
+                cloudCover = 1.0
+            elif cloudCover >= 0.667:
+                cloudCover = 2.0
+        else:
+            print('Ignoring cloudCover override')
+
 
     list_user = []
     if data_user:
