@@ -24,10 +24,19 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
         elif overrides['windGust'] == 'null':
             windGust = float(1.0)
+        elif overrides['windGust'] == 'windchill':
+            windGust = get_windchill(data_weatherreport['temperature'], data_weatherreport['windGust'])
         elif overrides['windGust'] == 'sqrt':
             windGust = math.sqrt(data_weatherreport['windGust']) # returns float
         elif overrides['windGust'] == 'ln':
             windGust = math.log(data_weatherreport['windGust'] + 1)
+        elif overrides['windGust'] == 'thirds':
+            if 0.0 <= windGust < 10.0:
+                windGust = 0.0
+            elif 10.0 <= windGust < 22.0:
+                windGust = 1.0
+            elif windGust >= 22.0:
+                windGust = 2.0
         else:
             print('Ignoring windGust override')
 
@@ -36,10 +45,18 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         print('Processing windSpeed overrides:', overrides['windSpeed'])
         if overrides['windSpeed'] == 'null':
             windSpeed = float(1.0)
+        elif overrides['windSpeed'] == 'windchill':
+            windSpeed = get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed']))
         elif overrides['windSpeed'] == 'sqrt':
             windSpeed = math.sqrt(data_weatherreport['windSpeed']) # returns float
         elif overrides['windSpeed'] == 'ln':
             windSpeed = math.log(data_weatherreport['windSpeed'] + 1)
+        elif overrides['windSpeed'] == 'humidity_multiply':
+            windSpeed = float(data_weatherreport['windSpeed']) * float(data_weatherreport['humidity'])
+        elif overrides['windSpeed'] == 'temp_multiply':
+            windSpeed = float(data_weatherreport['windSpeed']) * float(data_weatherreport['temperature'])
+        elif overrides['windSpeed'] == 'humidity_temp_multiply':
+            windSpeed = float(data_weatherreport['windSpeed']) * float(data_weatherreport['humidity']) * float(data_weatherreport['temperature'])
         elif overrides['windSpeed'] == 'quarters':
             if 0.0 <= windSpeed < 5.0:
                 windSpeed = 0.0
@@ -50,11 +67,11 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             elif windSpeed >= 15.0:
                 windSpeed = 3.0
         elif overrides['windSpeed'] == 'thirds':
-            if 0.0 <= windSpeed < 7.5:
+            if 0.0 <= windSpeed < 10.0:
                 windSpeed = 0.0
-            elif 7.5 <= windSpeed < 15.0:
+            elif 10.0 <= windSpeed < 22.0:
                 windSpeed = 1.0
-            elif windSpeed >= 15.0:
+            elif windSpeed >= 22.0:
                 windSpeed = 2.0
         else:
             print('Ignoring windSpeed override')
@@ -297,6 +314,9 @@ def hash_precip_type(precip_type):
 #################################################################################
 # Model utilities
 #################################################################################
+
+def get_windchill(temp_f, wind_mph):
+    return 35.74 + 0.6215*temp_f - 35.75*math.pow(wind_mph,0.16) + 0.4275*temp_f*math.pow(wind_mph,0.16)
 
 def model_float_equivalent(resultA, resultB):
     """Determine if results row converted to floats are equivalent.

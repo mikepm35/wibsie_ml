@@ -522,7 +522,7 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
         # Set primary percent
         primary_percent = 0.5 + (result[max_key]-.333)/.667*0.5
 
-        # Comfort scale ranges -1 to 1, comfort ~ -0.67 to 0.67
+        # Comfort scale ranges -1 to 1, comfort ~ -0.33 to 0.33
         comfort_scale = result['uncomfortable_warm']-result['uncomfortable_cold']
 
         # Confidence on a scale from 0 to 1
