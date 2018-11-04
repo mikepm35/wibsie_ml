@@ -114,18 +114,23 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         else:
             print('Ignoring cloudCover override')
 
+    totalClo = upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
+    if 'totalClo' in overrides:
+        print('Processing totalClo overrides:', overrides['totalClo'])
+        if overrides['totalClo'] == 'temp_multiply':
+            totalClo = totalClo * float(data_weatherreport['temperature'])
 
     list_user = []
     if data_user:
         list_user = [hash_age(birth_year_to_age(int(data_user['birth_year']))),
-                float(data_user['bmi']),
-                hash_gender(data_user['gender']),
-                hash_lifestyle(data_user['lifestyle'])]
+                        float(data_user['bmi']),
+                        hash_gender(data_user['gender']),
+                        hash_lifestyle(data_user['lifestyle'])]
 
 
     return list_user + [hash_loc_type(data_location['loc_type']),
             float(data_weatherreport['apparentTemperature']),
-            float(data_weatherreport['cloudCover']),
+            cloudCover,
             humidity,
             float(data_weatherreport['precipIntensity']),
             float(data_weatherreport['precipProbability']),
@@ -134,7 +139,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             windSpeed,
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
-            upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
+            totalClo
             ]
 
 
