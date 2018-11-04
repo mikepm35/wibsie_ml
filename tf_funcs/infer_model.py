@@ -432,6 +432,10 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     else:
         print('Using locally available model')
 
+    # Modify data to support sun intensity
+    data['weatherreport']['raw'] = {'daily': {'data': [{'sunriseTime': data['weatherreport']['sunrise'],
+                                                        'sunsetTime': data['weatherreport']['sunset']}]}}
+
     # Get long path to extracted pb file
     model_pb_path_available = None
     for root, dirs, files in os.walk(extract_path):
