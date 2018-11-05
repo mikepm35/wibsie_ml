@@ -432,6 +432,10 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     else:
         print('Using locally available model')
 
+    # Modify data to support sun intensity
+    data['weatherreport']['raw'] = {'daily': {'data': [{'sunriseTime': data['weatherreport']['sunrise'],
+                                                        'sunsetTime': data['weatherreport']['sunset']}]}}
+
     # Get long path to extracted pb file
     model_pb_path_available = None
     for root, dirs, files in os.walk(extract_path):
@@ -522,7 +526,7 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
         # Set primary percent
         primary_percent = 0.5 + (result[max_key]-.333)/.667*0.5
 
-        # Comfort scale ranges -1 to 1, comfort ~ -0.67 to 0.67
+        # Comfort scale ranges -1 to 1, comfort ~ -0.33 to 0.33
         comfort_scale = result['uncomfortable_warm']-result['uncomfortable_cold']
 
         # Confidence on a scale from 0 to 1
