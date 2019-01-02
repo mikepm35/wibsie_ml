@@ -207,12 +207,9 @@ def upload_data(event, context):
         datakey_weatherreports[key] = w
 
     # Build a join around experiences - fields are trimmed in model*.py during train
-    feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
-                        'apparent_temperature', 'cloud_cover', 'humidity_temp',
-                        'precip_intensity', 'precip_probability', 'temperature',
-                        'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
-                        'total_clo']
-    label_column = 'comfort_level_result'
+    feature_columns = model_helper.FEATURE_COLS_ALL
+    label_column = model_helper.LABEL_COL
+    
     results = []
     userid_map = []
     for e in data_experiences:
@@ -284,7 +281,9 @@ def upload_data(event, context):
         print('Overriding min_sample: ', int(config['min_sample']))
         min_sample = int(config['min_sample'])
 
-    data = resampleData(data=data, min_sample=min_sample)
+    if min_sample > 0:
+        print('Running resampleData')
+        data = resampleData(data=data, min_sample=min_sample)
 
     # Split data
     split = 0.9

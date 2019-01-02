@@ -10,15 +10,43 @@ import io
 import decimal
 import time
 import json
+import functools
+import tarfile
+import csv
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
-from sagemaker.tensorflow import TensorFlow
-import sagemaker as sm
-# import sagemaker.amazon.common as smac
+import numpy as np
+import tensorflow as tf
+
+from common import model
+
+
+#tf.enable_eager_execution() # enables real-time output
+
+
+def _csv_to_dict(fullfilepath, valid_keys):
+    """Expects fully qualified path and filename, returns a dictionary where
+    each key is a column as a list. valid_keys is a list of strings that
+    are used dto restrict what is read into the data_dict."""
+
+    data_dict = {}
+    with open(fullfilepath) as fh:
+        rd = csv.DictReader(fh, delimiter=',')
+        for row in rd:
+            if not data_dict:
+                for key in row.keys():
+                    data_dict[key] = [row[key]]
+            else:
+                for key in row.keys():
+                    data_dict[key].append(row[key])
+
+    return data_dict
 
 
 def train_tf(event, context):
+    """Main training lambda function"""
+
     # Read in relevant environment variables, and allow for local run
     if event.get('runlocal'):
         print('Running local and using environment variable placeholders')
@@ -26,8 +54,8 @@ def train_tf(event, context):
         bucket_prefix = 'sagemaker'
         region = 'us-east-1'
         stage = 'dev'
-        role = 'arn:aws:iam::530583866435:role/service-role/AmazonSageMaker-ExecutionRole-20180616T150039'
-        filepath = '/Users/mmorit202/repos/wibsie_ml_lambda3/tf_funcs/'
+        filepath = ''
+
     else:
         print('Running using importing environments')
         bucket = os.environ['SAGE_BUCKET']
@@ -36,33 +64,33 @@ def train_tf(event, context):
         stage = os.environ['STAGE']
         service = os.environ['SERVICE']
         function_prefix = os.environ['FUNCTION_PREFIX']
-        role = os.environ['SAGE_ROLE']
-        filepath = ''
-        print('SM execution role: ', sm.get_execution_role())
+        filepath = '/tmp/'
 
     if event.get('warm_only'):
         print('Warming only, exiting')
         return {"message": "Train function exiting for warm only",
                 "event": event}
 
-    print('Starting train_tf: ', role)
 
     dynamodb = boto3.resource('dynamodb', region_name=region)
 
-    # Get configuration parameters
+
+    # Read in config
     config_stage = stage
     if event.get('config_stage'):
         config_stage = event['config_stage']
-        print('Overriding config_stage: ', stage, config_stage)
+        print('Overriding stage with config_stage: ', stage, config_stage)
 
     config = dynamodb.Table('wibsie-config').query(
                     KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
     print('Config: ', config)
 
+
     # Setup user
     now_epoch = round(time.time()*1000)
     user_id = event['user_id']
     user_bucket = os.path.join(bucket,bucket_prefix,user_id)
+
 
     # Read model data from user
     table_users = dynamodb.Table('wibsie-users-'+stage)
@@ -74,50 +102,72 @@ def train_tf(event, context):
         return {"message": "No model data to train, exiting",
                 "event": event}
 
-    # Bucket location where generated custom TF code will be uploadeds
-    custom_code_upload_location = 's3://'+user_bucket+'/tfcode/'+str(now_epoch)+'/'
-    print('custom_code_upload_location: ', custom_code_upload_location)
 
-    # Bucket location where results of model training are saved
-    model_artifacts_location = 's3://'+user_bucket+'/models/'+str(now_epoch)+'/'
-    print('model_artifacts_location: ', model_artifacts_location)
+    # Download train and test files
+    model_trainfiles_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles', str(data_user['model']['train_created']))
+    print('model_trainfiles_s3path: ', model_trainfiles_s3path)
 
-    # Bucket location where training files are
-    model_trainfiles_location = 's3://'+user_bucket+'/trainingfiles/'+str(data_user['model']['train_created'])+'/'
-    print('model_trainfiles_location: ', model_trainfiles_location)
+    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/train.csv',filepath+'train.csv')
+    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/test.csv',filepath+'test.csv')
 
-    # Create estimator
-    job_name = user_id + '-' + stage + '-job-' + str(now_epoch)
 
-    training_steps = 50
-    if config.get('training_steps'):
-        print('Overriding training_steps: ', training_steps, config['training_steps'])
-        training_steps = int(config['training_steps'])
+    # Load train and test files as dicts
+    train_dict = _csv_to_dict(filepath + 'train.csv', model.FEATURE_COLS+[model.LABEL_COL])
+    test_dict = _csv_to_dict(filepath + 'test.csv', model.FEATURE_COLS+[model.LABEL_COL])
 
-    evaluation_steps = 10
-    if config.get('evaluation_steps'):
-        print('Overriding evaluation_steps: ', evaluation_steps, config['evaluation_steps'])
-        evaluation_steps = int(config['evaluation_steps'])
 
-    entry_point = filepath + 'model.py'
-    if config.get('model_type') and config['model_type'] == 'no_user':
-        print('Overriding entry_point for no_user')
-        entry_point = filepath + 'model_nouser.py'
+    # Retrieve feature columns
+    my_numeric_columns = model.get_feature_columns()
 
-    tf_estimator = TensorFlow(entry_point=entry_point,
-                                role=role,
-                                output_path=model_artifacts_location,
-                                code_location=custom_code_upload_location,
-                                train_instance_count=1,
-                                train_instance_type='ml.c4.xlarge',
-                                training_steps=training_steps,
-                                evaluation_steps=evaluation_steps)
 
-    tf_estimator.fit(inputs=model_trainfiles_location,
-                        wait=False,
-                        job_name=job_name)
+    # Parse any training overrides
+    input_config = {
+        'epochs_train': 150, 'epochs_test': 150,
+        'batches_train': 5,'batches_test': 5
+    }
 
-    print('Finished tf_estimator fit call, not waiting form completion: ', job_name)
+    for item in input_config:
+        if config.get(item):
+            print('Overriding input_config:', item, input_config[item], config[item])
+            input_config[item] = config[item]
+
+
+    # Setup input functions
+    train_inpf = functools.partial(model.easy_input_function, data_dict=train_dict, shuffle=True,
+                               label_key=model.LABEL_COL,
+                               num_epochs=input_config['epochs_train'],
+                               batch_size=input_config['batches_train'])
+
+    test_inpf = functools.partial(model.easy_input_function, data_dict=test_dict, shuffle=True,
+                                  label_key=model.LABEL_COL,
+                                  num_epochs=input_config['epochs_test'],
+                                  batch_size=input_config['batches_test'])
+
+
+    # Train model w/specified save location
+    tf_model = tf.estimator.LinearClassifier(
+                feature_columns=my_numeric_columns,
+                n_classes=3,
+                model_dir=filepath+'model_'+str(now_epoch)+'/'
+    )
+
+    tf_model.train(train_inpf)
+
+
+    # Evaluate model
+    model_result = tf_model.evaluate(test_inpf)
+    print('Model result:', model_result)
+
+
+    # Zip up model files and store in s3
+    with tarfile.open(filepath+'model.tar.gz', mode='w:gz') as archive:
+        archive.add(filepath+'model_'+str(now_epoch)+'/', recursive=True)
+
+    model_artifcats_s3path = os.path.join(bucket_prefix,user_id,'models', str(now_epoch), 'model.tar.gz')
+    print('model_artifacts_s3path: ', model_artifcats_s3path)
+
+    boto3.Session().resource('s3').Bucket(bucket).Object(model_artifcats_s3path).upload_file(filepath+'model.tar.gz')
+
 
     # Retrieve existing model information
     model_created_prev = 'none'
@@ -140,7 +190,8 @@ def train_tf(event, context):
     if data_user['model'].get('model_completed'):
         model_completed_prev = data_user['model']['model_completed']
 
-    # Update user with model information
+
+    # Write properties to dynamodb
     if 'save_model' not in config or config['save_model'] == True:
         print('Updating user with model information')
         response = table_users.update_item(
@@ -158,8 +209,8 @@ def train_tf(event, context):
                             ':model_created': now_epoch,
                             ':model_train_created': data_user['model']['train_created'],
                             ':model_blend_pct': blend_pct,
-                            ':model_job_name': job_name,
-                            ':model_completed': 'false',
+                            ':model_job_name': 'none',
+                            ':model_completed': 'true',
                             ':model_created_prev': model_created_prev,
                             ':model_train_created_prev': model_train_created_prev,
                             ':model_job_name_prev': model_job_name_prev,
@@ -169,12 +220,6 @@ def train_tf(event, context):
     else:
         print('Not saving user with model information')
 
-    # Deploy to sagemaker
-    if config.get('deploy_sagemaker'):
-        print('Deploying to sagemaker per config: ', job_name)
-        tf_predictor = tf_estimator.deploy(initial_instance_count=1,
-                                           instance_type='ml.m4.xlarge')
-        print('Finished tf_predictor deploy')
 
     return {"message": "Train function executed successfully",
             "event": event}
@@ -182,6 +227,10 @@ def train_tf(event, context):
 
 def train_comp(event, context):
     """Update user with model completion flag based on s3 event"""
+
+    print('train_comp not in use, exiting')
+    return {"message": "train_comp exiting since not in use",
+            "event": event}
 
     # Read in relevant environment variables, and allow for local run
     if event.get('runlocal'):

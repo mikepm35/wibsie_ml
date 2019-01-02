@@ -18,9 +18,11 @@ import boto3
 from boto3.dynamodb.conditions import Key, Attr
 import botocore
 import tensorflow as tf
-from tensorflow.contrib import predictor
 
-from common import model_helper
+from common import model_helper, model
+
+
+#tf.enable_eager_execution() # enables real-time output
 
 
 def infer(event, context):
@@ -57,11 +59,13 @@ def infer(event, context):
 
     now_epoch = round(time.time()*1000)
 
+
     # Parse AWS HTTP request (optional)
     queryParams = None
     if 'body' in event:
         queryParams = event.get('queryStringParameters')
         event = json.loads(event['body'])
+
 
     # Load schema
     schema = None
@@ -73,6 +77,7 @@ def infer(event, context):
 
     dynamodb = boto3.resource('dynamodb', region_name=region)
 
+
     # Get configuration parameters
     config_stage = stage
     if event.get('config_stage'):
@@ -82,6 +87,7 @@ def infer(event, context):
     config = dynamodb.Table('wibsie-config').query(
                     KeyConditionExpression=Key('stage').eq(config_stage))['Items'][0]
     print('Config: ', config)
+
 
     # Retrieve user info
     user_id = event['user_id']
@@ -99,6 +105,7 @@ def infer(event, context):
                 "event": event}
     else:
         data_user = data_users[0]
+
 
     # Determine if user has a model loaded
     user_has_model = False
@@ -119,6 +126,7 @@ def infer(event, context):
 
     else:
         print('Model key is not loaded for user')
+
 
     # Setup user for model
     blend_pct = 0.0
@@ -147,10 +155,12 @@ def infer(event, context):
 
     user_bucket = os.path.join(bucket,bucket_prefix,user_id_global)
 
+
     # Retrieve model user info
     response = table_users.query(
                     KeyConditionExpression=Key('id').eq(user_id_global))
     data_user_global = response['Items'][0]
+
 
     # Check user model details for actual load
     model_valid = False
@@ -179,6 +189,8 @@ def infer(event, context):
                 "body": "Valid model details not found",
                 "event": event}
 
+
+    # Download and extract model file
     data_user_global['model']['model_available'] = False
 
     suf_list = ['']
@@ -187,7 +199,7 @@ def infer(event, context):
 
     for suf in suf_list:
         print('Attempting model suffix: ', suf_list.index(suf))
-        model_artifacts_location = os.path.join(bucket_prefix,user_id_global,'models',str(data_user_global['model']['model_created'+suf]),data_user_global['model']['model_job_name'+suf],'output')
+        model_artifacts_location = os.path.join(bucket_prefix,user_id_global,'models',str(data_user_global['model']['model_created'+suf]))
         model_prefix = 'model_' + user_id_global + '_' + str(data_user_global['model']['model_created'+suf])
         local_file = model_prefix + '.tar.gz'
         local_file_path = file_path + local_file
@@ -217,26 +229,31 @@ def infer(event, context):
             data_user_global['model']['model_extract_path_available'] = extract_path
             break
 
+
+    # Future resolve extract_path
+    final_extract_path = None
+    for root, dirs, files in os.walk(data_user_global['model']['model_extract_path_available']):
+        for file in files:
+            if file.endswith('.pbtxt'):
+                final_extract_path = root
+                break
+
+    if not final_extract_path:
+        data_user_global['model']['model_available'] = False
+    else:
+        data_user_global['model']['model_extract_path_available'] = final_extract_path
+        print('final_extract_path:', final_extract_path)
+
+
+    # Break if model cannot be resolved
     if not data_user_global['model']['model_available']:
         print('No model could be resolved')
         return {"statusCode": 500,
                 "body": "No model could be resolved",
                 "event": event}
 
-    # Get long path to extracted pb file
-    data_user_global['model']['model_pb_path_available'] = None
-    for root, dirs, files in os.walk(data_user_global['model']['model_extract_path_available']):
-        for file in files:
-            if file.endswith('.pb'):
-                data_user_global['model']['model_pb_path_available'] = root
-                break
 
-    if not data_user_global['model']['model_pb_path_available']:
-        print('Model pb path could not be resolved')
-        return {"statusCode": 500,
-                "body": "Model pb path could not be resolved",
-                "event": event}
-
+    ## Stitch together data for prediction input
     # Retrieve experience data
     table_experiences = dynamodb.Table('wibsie-experiences-'+stage)
 
@@ -269,8 +286,7 @@ def infer(event, context):
     else:
         data_weatherreport = data_weatherreports[0]
 
-
-    # Get location loop
+    # Get location loop (sleep in case new loc and data not yet loaded)
     infer_loc_loops = 2
     if config.get('infer_loc_loops'):
         infer_loc_loops = int(config['infer_loc_loops'])
@@ -303,39 +319,57 @@ def infer(event, context):
             print('loc_type not defined, sleeping and trying again')
             time.sleep(infer_loc_sleep)
 
+
     # Create input for model
     model_overrides = {}
     if config.get('model_overrides'):
         print('Found model_overrides:', config['model_overrides'])
         model_overrides = config['model_overrides']
 
-    if config.get('model_type') and config['model_type'] == 'no_user':
-        print('Overriding model_type to nouser')
-        model_input = model_helper.table_to_floats_nouser(data_weatherreport,
-                                                    data_experience, data_location,
-                                                    model_overrides)
-    else:
-        model_input = model_helper.table_to_floats(data_user, data_weatherreport,
-                                                    data_experience, data_location,
-                                                    model_overrides)
+    model_input_all = model_helper.table_to_floats(data_user, data_weatherreport,
+                                                data_experience, data_location,
+                                                model_overrides)
 
-    # Setup model and create prediction
-    predictor_fn = predictor.from_saved_model(data_user_global['model']['model_pb_path_available'])
 
-    predictor_input = tf.train.Example(
-                                features=tf.train.Features(
-                                feature={"inputs": tf.train.Feature(
-                                float_list=tf.train.FloatList(value=model_input))}))
+    # Convert input to dict of lists (input func will restrict cols)
+    model_input = {model.LABEL_COL: [-1]}
+    for i in range(len(model_input_all)):
+        model_input[model_helper.FEATURE_COLS_ALL[i]] = [model_input_all[i]]
 
-    predictor_string = predictor_input.SerializeToString()
 
-    prediction = predictor_fn({"inputs": [predictor_string]})
-    print('Prediction result: ', prediction)
+    # Load model
+    tf_model = tf.estimator.LinearClassifier(
+                    feature_columns=model.get_feature_columns(),
+                    n_classes=3,
+                    model_dir=data_user_global['model']['model_extract_path_available'],
+                    warm_start_from=data_user_global['model']['model_extract_path_available']
+    )
 
-    # Convert prediction ndarray to dict
+
+    # Setup prediction
+    pred_iter = tf_model.predict(
+                    lambda:model.easy_input_function(
+                        model_input,
+                        label_key=model.LABEL_COL,
+                        num_epochs=1,
+                        shuffle=False,
+                        batch_size=5
+                    )
+    )
+
+
+    # Run prediction iteration
+    pred_raw = []
+    for pred_dict in pred_iter:
+        print('pred_dict:', pred_dict)
+        pred_raw.append(pred_dict)
+
+
+    # Convert raw prediction result to dict
     attribute_array = [{'blend': blend_pct}]
-    prediction_json = prediction_to_dict(prediction, attribute_array, schema_obj)
+    prediction_json = prediction_to_dict(pred_raw, attribute_array, schema_obj)
     print('Prediction json: ', prediction_json)
+
 
     # Adds extended values to prediction result
     prediction_type = None
@@ -347,6 +381,7 @@ def infer(event, context):
                                                     prediction_type)
 
     print('Prediction json extended: ', prediction_json_extended)
+
 
     # Pull first value and add to experience table
     if len(prediction_json_extended) > 1:
@@ -411,7 +446,7 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     schema_obj = ver(schema_str)
 
     # Setup filesystem information
-    model_artifacts_location = os.path.join(bucket_prefix,data['user']['user_id'],'models',data['user']['model_created'],data['user']['model_job_name'],'output')
+    model_artifacts_location = os.path.join(bucket_prefix,data['user']['user_id'],'models',data['user']['model_created'])
     model_prefix = 'model_' + data['user']['user_id'] + '_' + data['user']['model_created']
     local_file = model_prefix + '.tar.gz'
     local_file_path = file_path + local_file
@@ -436,39 +471,60 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     data['weatherreport']['raw'] = {'daily': {'data': [{'sunriseTime': data['weatherreport']['sunrise'],
                                                         'sunsetTime': data['weatherreport']['sunset']}]}}
 
-    # Get long path to extracted pb file
-    model_pb_path_available = None
-    for root, dirs, files in os.walk(extract_path):
-        for file in files:
-            if file.endswith('.pb'):
-                model_pb_path_available = root
-                break
 
-    # Convert data to model inputs
-    model_input = model_helper.table_to_floats_nouser(data['weatherreport'],
+    # Create input for model
+    model_input_all = model_helper.table_to_floats(data['weatherreport'],
                                                 data['experience'], data['location'],
                                                 model_overrides)
 
-    # Setup model and create prediction
-    predictor_fn = predictor.from_saved_model(model_pb_path_available)
 
-    predictor_input = tf.train.Example(
-                                features=tf.train.Features(
-                                feature={"inputs": tf.train.Feature(
-                                float_list=tf.train.FloatList(value=model_input))}))
+    # Convert input to dict of lists (input func will restrict cols)
+    model_input = {model.LABEL_COL: [-1]}
+    for i in range(len(model_input_all)):
+        model_input[model_helper.FEATURE_COLS_ALL[i]] = [model_input_all[i]]
 
-    predictor_string = predictor_input.SerializeToString()
 
-    prediction = predictor_fn({"inputs": [predictor_string]})
-    print('Prediction result: ', prediction)
+    # Load model
+    tf_model = tf.estimator.LinearClassifier(
+                    feature_columns=model.get_feature_columns(),
+                    n_classes=3,
+                    warm_start_from=extract_path
+    )
 
-    # Convert prediction ndarray to dict
+
+    # Setup prediction
+    pred_iter = tf_model.predict(
+                    lambda:model.easy_input_function(
+                        model_input,
+                        label_key=model.LABEL_COL,
+                        num_epochs=1,
+                        shuffle=False,
+                        batch_size=5
+                    )
+    )
+
+
+    # Run prediction iteration
+    pred_raw = []
+    for pred_dict in pred_iter:
+        print('pred_dict:', pred_dict)
+        pred_raw.append(pred_dict)
+
+
+    # Convert raw prediction result to dict
     attribute_array = [{'blend': blend_pct}]
-    prediction_json = prediction_to_dict(prediction, attribute_array, schema_obj)
+    prediction_json = prediction_to_dict(pred_raw, attribute_array, schema_obj)
     print('Prediction json: ', prediction_json)
 
+
     # Adds extended values to prediction result
-    prediction_json_extended = prediction_extended(prediction_json, schema_obj, prediction_type)
+    prediction_type = None
+    if config.get('prediction_type'):
+        print('Reading prediction_type from config:', config['prediction_type'])
+        prediction_type = config['prediction_type']
+
+    prediction_json_extended = prediction_extended(prediction_json, schema_obj,
+                                                    prediction_type)
 
     print('Prediction json extended: ', prediction_json_extended)
 
@@ -504,7 +560,7 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
     """Takes the list of prediction dicts and adds extended results"""
 
     # Schema check
-    if schema_obj <= '1.0':
+    if not schema_obj or schema_obj <= '1.0':
         print('Skipping prediction_extended due to too low schema: ', schema_obj)
         return prediction_json
 
@@ -564,30 +620,21 @@ def prediction_extended(prediction_json, schema_obj, prediction_type=None):
 
 
 def prediction_to_dict(prediction, attribute_array, schema_obj):
-    """Takes a prediction ndarray and converts to a list of dictionary results.
-        Also takes an array of dicts for model attributes that are appeneded to result.
-        Classes are converted back to string representations.
+    """Takes a raw prediction dictionary list and creates a class/score dict.
+        Assumes probabilities index matches to class.
         result = [{<class1>: <score1>, <class2>: <score2>, ...}, ...]"""
 
     result = []
 
-    try:
-        for rind in range(len(prediction['classes'])):
-            item = attribute_array[rind].copy()
-            for cind in range(len(prediction['classes'][rind])):
-                cls_str = model_helper.key_comfort_level_result(int(prediction['classes'][rind][cind]), schema_obj)
-                if cls_str in item:
-                    item[cls_str] += float(prediction['scores'][rind][cind])
-                else:
-                    item[cls_str] = float(prediction['scores'][rind][cind])
+    for rind in range(len(prediction)):
+        result_item = attribute_array[rind].copy()
+        for i in range(len(prediction[rind]['probabilities'])):
+            cls_str = model_helper.key_comfort_level_result(i, schema_obj)
+            result_item[cls_str] = float(prediction[rind]['probabilities'][i])
 
-            result.append(item)
+        result.append(result_item)
 
-        return result
-
-    except:
-        print('prediction_to_dict failed to convert prediction')
-        return 'ERROR'
+    return result
 
 
 def pretty_comfort_result(result):

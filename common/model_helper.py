@@ -3,6 +3,30 @@ from distutils.version import StrictVersion as ver
 import math
 
 
+FEATURE_COLS_ALL = [
+    'age',
+    'bmi',
+    'gender',
+    'lifestyle',
+    'loc_type',
+    'apparent_temperature',
+    'cloud_cover',
+    'humidity_temp',
+    'precip_intensity',
+    'precip_probability',
+    'temperature',
+    'wind_burst',
+    'wind_speed',
+    'precip_type',
+    'activity_met',
+    'total_clo',
+    'humidity',
+    'wind_chill'
+]
+
+LABEL_COL = 'comfort_level_result'
+
+
 #################################################################################
 # Convert table definitions to float list
 #################################################################################
@@ -13,7 +37,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
                             'apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
                             'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
-                            'total_clo']
+                            'total_clo', 'humidity', 'wind_chill']
     """
 
     # print(data_weatherreport['raw']['daily']['data'][0]['sunriseTime']) #s
@@ -155,7 +179,9 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
             windSpeed,
             hash_precip_type(data_weatherreport.get('precipType')),
             activity_to_met(data_experience['activity']),
-            totalClo
+            totalClo,
+            float(data_weatherreport['humidity']),
+            get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed']))
             ]
 
 
