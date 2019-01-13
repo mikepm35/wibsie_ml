@@ -519,7 +519,7 @@ def generateRandomDataLists(data, split):
     return bool_list_train, bool_list_test
 
 
-def generateRandomDataLists2(data, split, valid_keys, ptest_loops=10):
+def generateRandomDataLists2(data, split, valid_keys, ptest_loops=50):
     """Use a list of dicts and regression test to confirm split.
     Requires list of valid key names to include.
     Returns list of bools that can split original dataframe."""
