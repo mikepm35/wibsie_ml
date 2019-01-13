@@ -4,6 +4,7 @@ import math
 
 
 FEATURE_COLS_ALL = [
+    'user_id',
     'age',
     'bmi',
     'gender',
@@ -26,6 +27,8 @@ FEATURE_COLS_ALL = [
 
 LABEL_COL = 'comfort_level_result'
 
+INDEX_USERID = 'be1f64e0-6c1d-11e8-b0b9-e3202dfd59eb'
+
 
 #################################################################################
 # Convert table definitions to float list
@@ -33,7 +36,7 @@ LABEL_COL = 'comfort_level_result'
 
 def table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides):
     """Must output the following order:
-        feature_columns = ['age', 'bmi', 'gender', 'lifestyle', 'loc_type',
+        feature_columns = ['user_id', 'age', 'bmi', 'gender', 'lifestyle', 'loc_type',
                             'apparent_temperature', 'cloud_cover', 'humidity_temp',
                             'precip_intensity', 'precip_probability', 'temperature',
                             'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
@@ -162,7 +165,8 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
     list_user = []
     if data_user:
-        list_user = [hash_age(birth_year_to_age(int(data_user['birth_year']))),
+        list_user = [hash_userid(data_user['id']),
+                        hash_age(birth_year_to_age(int(data_user['birth_year']))),
                         float(data_user['bmi']),
                         hash_gender(data_user['gender']),
                         hash_lifestyle(data_user['lifestyle'])]
@@ -305,8 +309,21 @@ def birth_year_to_age(birth_year):
 # Get categorical features as floats (throws exception if not found, or wrong type)
 #################################################################################
 
+def hash_userid(user_id):
+    """Sets index user_id to 0, and all others to 1"""
+
+    if type(user_id) not in [str]:
+        raise Exception('hash_userid received unexpected type')
+
+    if user_id == INDEX_USERID:
+        return float(0)
+    else:
+        return float(1)
+
+
 def hash_age(age):
     """Create buckets without dependencies on external libraries, e.g pandas"""
+
     if type(age) not in [int, float]:
         raise Exception('hash_age received unexpected type')
 
@@ -424,10 +441,20 @@ def model_float_equivalent(resultA, resultB):
 
     score = 0.0
 
-    humidty_score = float(abs(resultA['humidity_temp']-resultB['humidity_temp'])) / 0.2
+    # humidty_score = float(abs(resultA['humidity_temp']-resultB['humidity_temp'])) / 0.2
+    # score += humidty_score
+    # if humidty_score > 1:
+    #     fail_list.append('humidity_temp')
+
+    humidty_score = float(abs(resultA['humidity']-resultB['humidity'])) / 0.3
     score += humidty_score
     if humidty_score > 1:
-        fail_list.append('humidity_temp')
+        fail_list.append('humidity')
+
+    windspeed_score = float(abs(resultA['wind_speed']-resultB['wind_speed'])) / 0.75
+    score += windspeed_score
+    if windspeed_score > 1:
+        fail_list.append('windspeed_score')
 
     # if abs(resultA['loc_type']-resultB['loc_type']) > 0:
     #     fail_list.append('loc_type')
@@ -435,10 +462,10 @@ def model_float_equivalent(resultA, resultB):
     # if abs(resultA['cloud_cover']-resultB['cloud_cover']) > 0.25:
     #     fail_list.append('cloud_cover')
 
-    precip_score = abs(int(resultA['precip_probability'])-int(resultB['precip_probability']))
-    score += precip_score
-    if precip_score > 0:
-        fail_list.append('precip_probability')
+    # precip_score = abs(int(resultA['precip_probability'])-int(resultB['precip_probability']))
+    # score += precip_score
+    # if precip_score > 0:
+    #     fail_list.append('precip_probability')
 
     # elif abs(resultA['precip_type']-resultB['precip_type']) > 0:
     #     fail_list.append('precip_type')

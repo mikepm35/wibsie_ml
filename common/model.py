@@ -8,6 +8,7 @@ except:
 
 
 FEATURE_COLS = [
+    'user_id',
     'total_clo',
     'precip_intensity',
     'precip_type',
@@ -26,6 +27,7 @@ def get_feature_columns():
     my_numeric_columns = []
 
     # base columns
+    my_numeric_columns.append(tf.feature_column.numeric_column('user_id'))
     my_numeric_columns.append(tf.feature_column.numeric_column('total_clo'))
     my_numeric_columns.append(tf.feature_column.numeric_column('precip_intensity'))
     my_numeric_columns.append(tf.feature_column.numeric_column('precip_probability'))
