@@ -12,12 +12,17 @@ import math
 import json
 
 import pandas as pd
-# import numpy as np
+from scipy import stats
+import numpy as np
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 # import sagemaker.amazon.common as smac
 
 from common import model_helper
+from common import model
+
+
+np.random.seed(42) # fix random seed
 
 
 def upload_data(event, context):
@@ -209,7 +214,7 @@ def upload_data(event, context):
     # Build a join around experiences - fields are trimmed in model*.py during train
     feature_columns = model_helper.FEATURE_COLS_ALL
     label_column = model_helper.LABEL_COL
-    
+
     results = []
     userid_map = []
     for e in data_experiences:
@@ -454,6 +459,18 @@ def generateRandomDataLists(data, split):
     generateRandomDataLists takes the final dataframe and precisely randomizes.
     Returns bool list for train and test."""
 
+    # If split=0.0, return full lists for both
+    if split==0.0:
+        print('Returning full lists since split=0.0')
+        bool_list_train = []
+        bool_list_test = []
+
+        for index, row in data.iterrows():
+            bool_list_train.append(True)
+            bool_list_test.append(True)
+
+        return bool_list_train, bool_list_test
+
     # Create normalized random list of indicies
     row_num = data.shape[0]
     ind_list = [i for i in range(row_num)]
@@ -472,7 +489,11 @@ def generateRandomDataLists(data, split):
     data_sorted['ind_data'] = data_sorted.index
     data_sorted['sortkey'] = -1
     for index, row in data_sorted.iterrows():
-        sortval = row['temperature'] + row['humidity_temp']*50 + row['activity_met']*10 + row['total_clo']*100
+        sortval = row['temperature'] + row['activity_met']*10 + row['total_clo']*100
+
+        if 'humidity_temp' in row:
+            sortval += row['humidity_temp']*50
+
         data_sorted.set_value(index,'sortkey',sortval)
 
     # Create sorted data
@@ -498,7 +519,104 @@ def generateRandomDataLists(data, split):
     return bool_list_train, bool_list_test
 
 
+def generateRandomDataLists2(data, split, valid_keys, ptest_loops=10):
+    """Use a list of dicts and regression test to confirm split.
+    Requires list of valid key names to include.
+    Returns list of bools that can split original dataframe."""
 
+    print('Starting generateRandomDataLists2:', split, ptest_loops)
+
+    # Convert dataframe to dicts with real index as key
+    data_dict = data.to_dict('index')
+
+    # Convert dicts to list with real index as a key
+    data_list = []
+    skip_list = [] #for tracking
+    for ind in data_dict:
+        ind_dict = {}
+
+        for key in data_dict[ind]:
+            if key not in valid_keys:
+                if key not in skip_list:
+                    skip_list.append(key)
+                    print('Skipping key since not in training list (only printing once)') # only report once
+                continue
+            else:
+                ind_dict[key] = data_dict[ind][key]
+
+        ind_dict['ind'] = ind
+        data_list.append(ind_dict)
+
+    # Attempt to shuffle list
+    for t in range(ptest_loops):
+        print('Starting suffle loop:', t)
+
+        # Shuffle list in place
+        random.shuffle(data_list)
+
+        # Split list into train and test
+        data_list_train = data_list[:int(len(data_list)*split)]
+        data_list_test = data_list[int(len(data_list)*split):]
+
+        # Run ks test on each key to determine if distributions align with original
+        p_limit = 0.1
+        ks_limit = 0.1
+        issample = True
+        for key in data_list[0].keys():
+            key_list = [d[key] for d in data_list]
+            key_list_train = [d[key] for d in data_list_train]
+            key_list_test = [d[key] for d in data_list_test]
+
+            ks_value_train, p_value_train = stats.ks_2samp(key_list, key_list_train)
+            ks_value_test, p_value_test = stats.ks_2samp(key_list, key_list_test)
+
+            if ks_value_train > ks_limit:
+                print('Train FAILED ks-test:', key, ks_value_train)
+                issample = False
+
+            if p_value_train < p_limit:
+                print('Train FAILED p-test:', key, p_value_train)
+                issample = False
+
+            if ks_value_test > ks_limit:
+                print('Test FAILED ks-test:', key, ks_value_test)
+                issample = False
+
+            if p_value_test < p_limit:
+                print('Test FAILED p-test:', key, p_value_test)
+                issample = False
+
+        if issample == True:
+            print('Exiting shuffle loop:', t)
+            break
+
+    if issample == False:
+        raise Exception('Not able to create a valid test/train list')
+
+    print('Train/test split succeeded:', t, ks_value_train, p_value_train, ks_value_test, p_value_test)
+    print('Shuffled list lens:', t, len(data_list_train), len(data_list_test))
+
+    # Create real index lists for faster lookup
+    ind_list_train = [d['ind'] for d in data_list_train]
+    ind_list_test = [d['ind'] for d in data_list_test]
+
+    # Create bool lists
+    bool_list_train = []
+    bool_list_test = []
+    for index, row in data.iterrows():
+        if index in ind_list_train:
+            bool_list_train.append(True)
+            bool_list_test.append(False)
+
+        elif index in ind_list_test:
+            bool_list_train.append(False)
+            bool_list_test.append(True)
+
+        else:
+            raise Exception('Index not found in lookups')
+
+
+    return bool_list_train, bool_list_test
 
 
 

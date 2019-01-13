@@ -410,6 +410,8 @@ def get_sunintensity(cloud_cover, exp_created, weather_raw):
 
 
 def get_windchill(temp_f, wind_mph):
+    """Returns an adjusted temperature in F. Is almost identical to apparentTemperature."""
+
     return 35.74 + 0.6215*temp_f - 35.75*math.pow(wind_mph,0.16) + 0.4275*temp_f*math.pow(wind_mph,0.16)
 
 

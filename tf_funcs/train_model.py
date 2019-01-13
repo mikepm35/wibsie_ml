@@ -107,13 +107,13 @@ def train_tf(event, context):
     model_trainfiles_s3path = os.path.join(bucket_prefix,user_id,'trainingfiles', str(data_user['model']['train_created']))
     print('model_trainfiles_s3path: ', model_trainfiles_s3path)
 
-    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/train.csv',filepath+'train.csv')
-    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/test.csv',filepath+'test.csv')
+    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/train.csv',filepath+'train_'+str(now_epoch)+'.csv')
+    boto3.Session().resource('s3').Bucket(bucket).download_file(model_trainfiles_s3path+'/test.csv',filepath+'test_'+str(now_epoch)+'.csv')
 
 
     # Load train and test files as dicts
-    train_dict = _csv_to_dict(filepath + 'train.csv', model.FEATURE_COLS+[model.LABEL_COL])
-    test_dict = _csv_to_dict(filepath + 'test.csv', model.FEATURE_COLS+[model.LABEL_COL])
+    train_dict = _csv_to_dict(filepath+'train_'+str(now_epoch)+'.csv', model.FEATURE_COLS+[model.LABEL_COL])
+    test_dict = _csv_to_dict(filepath+'test_'+str(now_epoch)+'.csv', model.FEATURE_COLS+[model.LABEL_COL])
 
 
     # Retrieve feature columns
@@ -122,8 +122,8 @@ def train_tf(event, context):
 
     # Parse any training overrides
     input_config = {
-        'epochs_train': 150, 'epochs_test': 150,
-        'batches_train': 5,'batches_test': 5
+        'epochs_train': 400, 'epochs_test': 400,
+        'batches_train': 10,'batches_test': 10
     }
 
     for item in input_config:

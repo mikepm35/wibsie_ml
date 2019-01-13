@@ -10,10 +10,9 @@ except:
 FEATURE_COLS = [
     'total_clo',
     'precip_intensity',
-    'precip_probability',
     'precip_type',
     'activity_met',
-    'wind_chill',
+    'wind_speed',
     'temperature',
     'apparent_temperature',
     'humidity',
@@ -39,6 +38,10 @@ def get_feature_columns():
     # derived columns
     my_numeric_columns.append(tf.feature_column.crossed_column(
         ['activity_met', 'total_clo'], hash_bucket_size=1000))
+    my_numeric_columns.append(tf.feature_column.crossed_column(
+        ['total_clo', 'wind_speed'], hash_bucket_size=1000))
+    my_numeric_columns.append(tf.feature_column.crossed_column(
+        ['humidity', 'activity_met'], hash_bucket_size=1000))
 
     return my_numeric_columns
 
