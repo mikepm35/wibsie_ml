@@ -5,6 +5,7 @@ except ImportError:
 
 import os
 import sys
+import shutil
 import datetime
 import io
 import decimal
@@ -188,6 +189,19 @@ def train_tf(event, context):
     print('model_artifacts_s3path: ', model_artifcats_s3path)
 
     boto3.Session().resource('s3').Bucket(bucket).Object(model_artifcats_s3path).upload_file(filepath+'model.tar.gz')
+
+
+    # Clean up tmp folder
+    if 'tmp' in filepath:
+        print('Starting tmp cleanup')
+        for item in os.listdir(filepath):
+            absolute_item = os.path.join(filepath, item)
+
+            if os.path.isfile(absolute_item):
+                os.unlink(absolute_item)
+
+            elif os.path.isdir(absolute_item):
+                shutil.rmtree(absolute_item)
 
 
     # Retrieve existing model information
