@@ -145,6 +145,7 @@ def train_tf(event, context):
 
 
     # Train model w/specified save location
+    train_name = 'local-LinearClassifier-1'
     tf_model = tf.estimator.LinearClassifier(
                 feature_columns=my_numeric_columns,
                 n_classes=3,
@@ -157,6 +158,26 @@ def train_tf(event, context):
     # Evaluate model
     model_result = tf_model.evaluate(test_inpf)
     print('Model result:', model_result)
+
+
+    # Write model results to table
+    table_models = dynamodb.Table('wibsie-models-'+stage)
+
+    response_models = table_models.put_item(
+        Item={
+            'user_id': user_id,
+            'model_created': decimal.Decimal(str(now_epoch)),
+            'accuracy': decimal.Decimal(str(model_result['accuracy'])),
+            'algoname': train_name,
+            'average_loss': decimal.Decimal(str(model_result['average_loss'])),
+            'global_step': decimal.Decimal(str(model_result['global_step'])),
+            'jobname': 'local',
+            'logid': 'local',
+            'loss': decimal.Decimal(str(model_result['loss'])),
+            'stage': stage,
+            'timestamp': decimal.Decimal(str(now_epoch))
+        }
+    )
 
 
     # Zip up model files and store in s3
