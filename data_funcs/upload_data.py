@@ -10,6 +10,7 @@ import decimal
 import random
 import math
 import json
+import shutil
 
 import pandas as pd
 from scipy import stats
@@ -215,6 +216,12 @@ def upload_data(event, context):
     feature_columns = model_helper.FEATURE_COLS_ALL
     label_column = model_helper.LABEL_COL
 
+    # Get float representation and convert to dict for pandas
+    model_overrides = {}
+    if config.get('model_overrides'):
+        print('Found model_overrides:', config['model_overrides'])
+        model_overrides = config['model_overrides']
+
     results = []
     userid_map = []
     for e in data_experiences:
@@ -235,12 +242,6 @@ def upload_data(event, context):
 
         if 'precipType' not in weather_row:
             weather_row['precipType'] = None
-
-        # Get float representation and convert to dict for pandas
-        model_overrides = {}
-        if config.get('model_overrides'):
-            print('Found model_overrides:', config['model_overrides'])
-            model_overrides = config['model_overrides']
 
         float_list = model_helper.table_to_floats(data_user=user_row,
                                                 data_weatherreport=weather_row,
@@ -360,6 +361,18 @@ def upload_data(event, context):
             Payload=json.dumps({'user_id': user_id})
         )
 
+    # Clean up tmp folder
+    if 'tmp' in file_path:
+        print('Starting tmp cleanup')
+        for item in os.listdir(file_path):
+            absolute_item = os.path.join(file_path, item)
+
+            if os.path.isfile(absolute_item):
+                os.unlink(absolute_item)
+
+            elif os.path.isdir(absolute_item):
+                shutil.rmtree(absolute_item)
+
     return {"message": "Experiences uploaded",
             "train_file": train_file,
             "test_file": test_file,
@@ -415,9 +428,11 @@ def parseResultsForBlending(results, blending_type, userid_map, user_id, index_i
                     print('Matching lowest score for: ', io, min_ii)
                     inds_to_add.append(min_ii)
 
+            # Always add user entry (may also be added by index substitution)
             elif userid_map[io]==user_id and results[io]['comfort_level_result'] >= 0:
                 inds_to_add.append(io)
 
+    # Iterate over inds to add to create new results list and calc blend pct
     for ind in inds_to_add:
         if results[ind]['comfort_level_result'] >= 0:
             if userid_map[ind]==user_id:

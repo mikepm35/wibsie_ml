@@ -50,7 +50,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
     # Process overrides
     windGust = float(data_weatherreport['windGust'])
     if 'windGust' in overrides:
-        print('Processing windGust overrides:', overrides['windGust'])
+        # print('Processing windGust overrides:', overrides['windGust'])
         if overrides['windGust'] == 'windBurst':
             windGust = float(data_weatherreport['windGust'])-float(data_weatherreport['windSpeed'])
         elif overrides['windGust'] == 'null':
@@ -73,7 +73,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
     windSpeed = float(data_weatherreport['windSpeed'])
     if 'windSpeed' in overrides:
-        print('Processing windSpeed overrides:', overrides['windSpeed'])
+        # print('Processing windSpeed overrides:', overrides['windSpeed'])
         if overrides['windSpeed'] == 'null':
             windSpeed = float(1.0)
         elif overrides['windSpeed'] == 'windchill':
@@ -109,7 +109,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
     humidity = float(data_weatherreport['humidity'])
     if 'humidity' in overrides:
-        print('Processing humidity overrides:', overrides['humidity'])
+        # print('Processing humidity overrides:', overrides['humidity'])
         if overrides['humidity'] == 'apptemp_multiply':
             humidity = float(data_weatherreport['humidity']) * (float(data_weatherreport['apparentTemperature']) / 100)
         elif overrides['humidity'] == 'temp_multiply':
@@ -121,7 +121,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
     cloudCover = float(data_weatherreport['cloudCover'])
     if 'cloudCover' in overrides:
-        print('Processing cloudCover overrides:', overrides['cloudCover'])
+        # print('Processing cloudCover overrides:', overrides['cloudCover'])
         if overrides['cloudCover'] == 'null':
             cloudCover = float(1.0)
         elif overrides['cloudCover'] == 'apptemp_multiply':
@@ -155,7 +155,7 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
 
     totalClo = upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing'])
     if 'totalClo' in overrides:
-        print('Processing totalClo overrides:', overrides['totalClo'])
+        # print('Processing totalClo overrides:', overrides['totalClo'])
         if overrides['totalClo'] == 'temp_multiply':
             totalClo = totalClo * float(data_weatherreport['temperature'])
         elif overrides['totalClo'] == 'met_multiply':
