@@ -22,9 +22,6 @@ import tensorflow as tf
 from common import model_helper, model
 
 
-#tf.enable_eager_execution() # enables real-time output
-
-
 def infer(event, context):
     """Deploy previously uploaded model locally and make a prediction"""
 
@@ -207,11 +204,25 @@ def infer(event, context):
 
         # Only download and extract if data doesn't already exist
         if not os.path.exists(extract_path):
+            # Clean up tmp folder before download
+            if 'tmp' in file_path:
+                print('Starting tmp cleanup')
+                for item in os.listdir(file_path):
+                    absolute_item = os.path.join(file_path, item)
+
+                    if os.path.isfile(absolute_item):
+                        os.unlink(absolute_item)
+
+                    elif os.path.isdir(absolute_item):
+                        shutil.rmtree(absolute_item)
+
             print('Downloading and extracting data: ', model_artifacts_location, local_file_path, extract_path)
+
             try:
                 boto3.Session().resource('s3').Bucket(bucket).download_file(model_artifacts_location+'/model.tar.gz',local_file_path)
                 tarfile.open(local_file_path, 'r').extractall(extract_path)
                 data_user_global['model']['model_available'] = True
+
             except botocore.exceptions.ClientError as e:
                 if e.response['Error']['Code'] == "404":
                     print("Model zip file does not exist: ", e)
