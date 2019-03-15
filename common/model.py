@@ -9,15 +9,30 @@ except:
 
 FEATURE_COLS = [
     'user_id',
-    'total_clo',
-    'precip_intensity',
-    'precip_type',
-    'activity_met',
-    'wind_speed',
-    'temperature',
-    'apparent_temperature',
-    'humidity',
-    'cloud_cover'
+    # 'total_clo',
+    # 'precip_intensity',
+    # 'precip_type',
+    # 'activity_met',
+    # 'wind_speed',
+    # 'temperature',
+    # 'apparent_temperature',
+    # 'humidity',
+    # 'cloud_cover'
+    'h_intprod',
+    'ed_watvapdiff',
+    'esw_sweat',
+    'ere_resp',
+    'l_dryresp',
+    'r_radiation',
+    'c_convection'
+    # 'pmv',
+    # 'ppd'
+]
+
+CROSSED_COLS = [
+    # ['activity_met', 'total_clo'],
+    # ['total_clo', 'wind_speed'],
+    # ['humidity', 'activity_met']
 ]
 
 LABEL_COL = 'comfort_level_result'
@@ -27,23 +42,13 @@ def get_feature_columns():
     my_numeric_columns = []
 
     # base columns
-    my_numeric_columns.append(tf.feature_column.numeric_column('user_id'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('total_clo'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('precip_intensity'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('precip_probability'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('precip_type'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('activity_met'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('wind_chill'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('temperature'))
-    my_numeric_columns.append(tf.feature_column.numeric_column('humidity'))
+    for col in FEATURE_COLS:
+        my_numeric_columns.append(tf.feature_column.numeric_column(col))
 
     # derived columns
-    my_numeric_columns.append(tf.feature_column.crossed_column(
-        ['activity_met', 'total_clo'], hash_bucket_size=1000))
-    my_numeric_columns.append(tf.feature_column.crossed_column(
-        ['total_clo', 'wind_speed'], hash_bucket_size=1000))
-    my_numeric_columns.append(tf.feature_column.crossed_column(
-        ['humidity', 'activity_met'], hash_bucket_size=1000))
+    for col in CROSSED_COLS:
+        my_numeric_columns.append(tf.feature_column.crossed_column(
+            col, hash_bucket_size=1000))
 
     return my_numeric_columns
 
