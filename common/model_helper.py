@@ -22,7 +22,16 @@ FEATURE_COLS_ALL = [
     'activity_met',
     'total_clo',
     'humidity',
-    'wind_chill'
+    'wind_chill',
+    'h_intprod',
+    'ed_watvapdiff',
+    'esw_sweat',
+    'ere_resp',
+    'l_dryresp',
+    'r_radiation',
+    'c_convection',
+    'pmv',
+    'ppd'
 ]
 
 LABEL_COL = 'comfort_level_result'
@@ -163,6 +172,17 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         else:
             print('Ignoring totalClo override')
 
+    # get PMV parameters
+    pmv_params = getPmvParams({
+        'met': activity_to_met(data_experience['activity']),
+        'clo': upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing']),
+        'ta_airtmp': float(data_weatherreport['temperature']),
+        'tr_radtmp': float(data_weatherreport['temperature'])+10,
+        'var_airvel': float(data_weatherreport['windSpeed']),
+        'rel_humidity': float(data_weatherreport['humidity'])*100
+    })
+
+    # retrieve user data
     list_user = []
     if data_user:
         list_user = [hash_userid(data_user['id']),
@@ -171,21 +191,31 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
                         hash_gender(data_user['gender']),
                         hash_lifestyle(data_user['lifestyle'])]
 
-
-    return list_user + [hash_loc_type(data_location['loc_type']),
-            float(data_weatherreport['apparentTemperature']),
-            cloudCover,
-            humidity,
-            float(data_weatherreport['precipIntensity']),
-            float(data_weatherreport['precipProbability']),
-            float(data_weatherreport['temperature']),
-            windGust,
-            windSpeed,
-            hash_precip_type(data_weatherreport.get('precipType')),
-            activity_to_met(data_experience['activity']),
-            totalClo,
-            float(data_weatherreport['humidity']),
-            get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed']))
+    return list_user + [
+                hash_loc_type(data_location['loc_type']),
+                float(data_weatherreport['apparentTemperature']),
+                cloudCover,
+                humidity,
+                float(data_weatherreport['precipIntensity']),
+                float(data_weatherreport['precipProbability']),
+                float(data_weatherreport['temperature']),
+                windGust,
+                windSpeed,
+                hash_precip_type(data_weatherreport.get('precipType')),
+                activity_to_met(data_experience['activity']),
+                totalClo,
+                float(data_weatherreport['humidity']),
+                get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed']))
+            ] + [
+                pmv_params['h_intprod'],
+                pmv_params['ed_watvapdiff'],
+                pmv_params['esw_sweat'],
+                pmv_params['ere_resp'],
+                pmv_params['l_dryresp'],
+                pmv_params['r_radiation'],
+                pmv_params['c_convection'],
+                pmv_params['pmv'],
+                pmv_params['ppd']
             ]
 
 
@@ -493,6 +523,169 @@ def model_float_equivalent(resultA, resultB):
         return score
     else:
         return -1
+
+
+#################################################################################
+# ISO 7730 parameters
+#################################################################################
+
+def getPmvParams(func_input):
+    """
+    Expects input parameters as follows:
+        met (converted into rate), clo (converted to insulation),
+        ta_airtmp (F converted to C), tr_radtmp (F converted to C),
+        var_airvel (mph converted to m/s),
+        rel_humidity (% converted to partial pressure)
+
+    Returns the constituent parts of the PMV function, and PMV, as a dictionary.
+
+    Input details:
+        M is the metabolic rate, in watts per square metre (W/m2);
+        W is the effective mechanical power, in watts per square metre (W/m2);
+        Icl is the clothing insulation, in square metres kelvin per watt (m2 ⋅ K/W);
+        fcl is the clothing surface area factor;
+        ta is the air temperature, in degrees Celsius (°C);
+        tr is the mean radiant temperature, in degrees Celsius (°C);
+        var is the relative air velocity, in metres per second (m/s);
+        pa is the water vapour partial pressure, in pascals (Pa);
+        hc is the convective heat transfer coefficient, in watts per square metre kelvin [W/(m2 ⋅ K)];
+        tcl is the clothing surface temperature, in degrees Celsius (°C).
+        Note: 1 metabolic unit = 1 met = 58,2 W/m2; 1 clothing unit = 1 clo = 0,155 m2 ⋅ °C/W
+
+    Output equation details:
+        L = H-Ed-Esw-Ere-L-R-C
+        H = internal heat production
+        Ed = heat loss due to water vapour diffusion through the skin
+        Esw = heat loss due to sweating
+        Ere = latent heat loss due to respiration
+        L = dry respiration heat loss
+        R = heat loss by radiation from the surface of the clothed body
+        C = heat loss by convection from the surface of the clothed body
+        PMV = exp[met]*L
+    """
+
+    # Define limits where function is valid
+    limits = {
+        'm_metrate': [46, 232],
+        'w_mechpow': [],
+        'icl_cloins': [0, 0.310],
+        # 'clo': [0, 2],
+        'fcl_closa': [],
+        'ta_airtmp': [10, 30],
+        'tr_radtmp': [10, 40],
+        'var_airvel': [0, 1],
+        'pa_wtrpres': [0, 2700],
+        'hc_convht': [],
+        'pmv': [-2, 2]
+    }
+
+    # Inputs
+    inputs = {
+        'm_metrate': 58.2 * func_input['met'], #M, W/m^2
+        'w_mechpow': 58.2 * 0.001, #W, W/m^2
+        'icl_cloins': 0.155 * func_input['clo'], #Pa, m^2*K/W
+        'fcl_closa': None, #fcl, unitless
+        'ta_airtmp': (func_input['ta_airtmp'] - 32) * 0.5556, #ta, C
+        'tr_radtmp': (func_input['tr_radtmp'] - 32) * 0.5556, #tr, C
+        'var_airvel': func_input['var_airvel'] * 0.44704, #var, m/s
+        'pa_wtrpres': None, #pa, Pa
+        'hc_convht': None, #hc, W/(m^2*K)
+        'tcl_clotmp': None #tcl, C
+    }
+
+    # Calculate partial pressure water vapor from RH
+    inputs['pa_wtrpres'] = func_input['rel_humidity'] * 10 * math.exp(16.6536 - 4030.183 / (inputs['ta_airtmp'] + 235))
+
+    # Calculate fcl
+    if inputs['icl_cloins'] <= 0.078:
+        inputs['fcl_closa'] = 1.00 + 1.290*inputs['icl_cloins']
+    else:
+        inputs['fcl_closa'] = 1.05 + 0.645*inputs['icl_cloins']
+
+    # Calculate tcl through an optimization function
+    ### tcl function, which also updates hc and fcl
+    def getTclZero(tcl_in):
+        inputs['hc_convht'] = 2.38*math.pow(abs(tcl_in-inputs['ta_airtmp']),0.25)
+        if inputs['hc_convht'] < 12.1*math.sqrt(inputs['var_airvel']):
+            inputs['hc_convht'] = 12.1*math.sqrt(inputs['var_airvel'])
+
+        tcl_zero = 35.7-0.028*(inputs['m_metrate']-inputs['w_mechpow'])\
+            -inputs['icl_cloins']*((3.96*10**-8)*inputs['fcl_closa']*((tcl_in+273)**4-(inputs['tr_radtmp']+273)**4)\
+            +inputs['fcl_closa']*inputs['hc_convht']*(tcl_in-inputs['ta_airtmp']))\
+            -tcl_in
+
+        return tcl_zero
+
+    ### run iteration, stop for step size or precision goal
+    tcl_current = 200 # starting tcl value, C
+    gamma = 0.01 # step size multiplier
+    precision = 0.001
+    prev_stepsize = 1
+    max_iters = 500
+    cnt_iters = 0
+    while prev_stepsize > precision:
+        tcl_prev = tcl_current
+        tcl_zero = getTclZero(tcl_prev)
+        tcl_current -= gamma * abs(tcl_zero) # calc step size based on tcl diff
+        prev_stepsize = abs(tcl_prev-tcl_current) # as step sizes get smaller precision is increased
+        # print('iteration:', cnt_iters, tcl_prev, tcl_current, tcl_zero, prev_stepsize)
+
+        cnt_iters += 1
+        if cnt_iters == max_iters:
+            print('Breaking tcl iteration due to max iterations')
+            break
+
+    print('Final tcl:', tcl_current, prev_stepsize, cnt_iters)
+    print('Final hc, fcl:', inputs['hc_convht'], inputs['fcl_closa'])
+    inputs['tcl_clotmp'] = tcl_current
+
+    # Add convenience inputs
+    inputs['mw_neteng'] = inputs['m_metrate'] - inputs['w_mechpow']
+    inputs['t_nettmp'] = inputs['tcl_clotmp'] - inputs['ta_airtmp']
+    inputs['metfactor'] = 0.303*math.exp(-0.036*inputs['m_metrate'])+0.028
+    print('m-w, tcl-ta', inputs['mw_neteng'], inputs['t_nettmp'])
+
+    # Calculate outputs, which are heat values scaled by metabolic rate
+    outputs = {
+        'h_intprod': inputs['metfactor']*inputs['mw_neteng'],
+        'ed_watvapdiff': inputs['metfactor']*(3.05*10**-3)*(5733-6.99*inputs['mw_neteng']-inputs['pa_wtrpres']),
+        'esw_sweat': inputs['metfactor']*0.42*(inputs['mw_neteng']-58.15) if inputs['mw_neteng']>58.15 else 0, # if/else from comfort_models
+        'ere_resp': inputs['metfactor']*(1.7*10**-5)*inputs['m_metrate']*(5867-inputs['pa_wtrpres']),
+        'l_dryresp': inputs['metfactor']*0.0014*inputs['m_metrate']*(34-inputs['ta_airtmp']),
+        'r_radiation': inputs['metfactor']*(3.96*10**-8)*inputs['fcl_closa']*((inputs['tcl_clotmp']+273)**4-(inputs['tr_radtmp']+273)**4),
+        'c_convection': inputs['metfactor']*inputs['fcl_closa']*inputs['hc_convht']*inputs['t_nettmp'],
+    }
+
+    for key in ['h_intprod','ed_watvapdiff','esw_sweat','ere_resp','l_dryresp','r_radiation','c_convection']:
+        print(key, outputs[key]/inputs['metfactor'])
+
+    # Calculate PMV and PPD
+    outputs['pmv'] = outputs['h_intprod']\
+                    -outputs['ed_watvapdiff']-outputs['esw_sweat']-outputs['ere_resp']\
+                    -outputs['l_dryresp']-outputs['r_radiation']-outputs['c_convection']
+
+    outputs['ppd'] = 100 - 95 * math.exp(-0.3353*outputs['pmv']**4 - 0.2179*outputs['pmv']**2)
+
+    print('PMV, PPD, metfactor:', outputs['pmv'], outputs['ppd'], inputs['metfactor'])
+
+    # Check if function meets limits
+    for key in limits:
+        if not limits[key]:
+            continue
+
+        prop = None
+        if key in inputs:
+            prop = inputs[key]
+        elif key in outputs:
+            prop = outputs[key]
+        else:
+            print('WARNING key not found for limit check:', key)
+
+        if prop and (prop<limits[key][0] or prop>limits[key][1]):
+            print('WARNING variable outside limits:', key, prop, limits[key])
+
+    # Return outputs
+    return outputs
 
 
 
