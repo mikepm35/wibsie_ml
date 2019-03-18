@@ -419,7 +419,7 @@ def infer(event, context):
 # Test functions
 #####################################################
 
-def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=None, prediction_type=None):
+def infer_model_direct(schema_str, stage, data, data_as_float=False, blend_pct=0, model_overrides=None, prediction_type=None):
     """Infer model with directly passing in all required experience/user data.
     Still downloads model to test.
     Expects data in the form of:
@@ -433,7 +433,8 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
                 'temperature': <float>,
                 'windGust': <float>,  # converted to burst
                 'windSpeed': <float>,
-                'precipType': <str or None>
+                'precipType': <str or None>,
+                'uvIndex': <float>
             },
             'experience': {
                 'activity': <str>,
@@ -478,21 +479,40 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
     else:
         print('Using locally available model')
 
-    # Modify data to support sun intensity
-    data['weatherreport']['raw'] = {'daily': {'data': [{'sunriseTime': data['weatherreport']['sunrise'],
-                                                        'sunsetTime': data['weatherreport']['sunset']}]}}
+    # Update extract path
+    final_extract_path = None
+    for root, dirs, files in os.walk(extract_path):
+        for file in files:
+            if file.endswith('.pbtxt'):
+                final_extract_path = root
+                break
+
+    extract_path = final_extract_path
+    print('Updated extract path: ', extract_path)
+
+    # Convert data to inputs
+    if data_as_float == False:
+        # Modify data to support sun intensity
+        data['weatherreport']['raw'] = {'daily': {'data': [{'sunriseTime': data['weatherreport']['sunrise'],
+                                                            'sunsetTime': data['weatherreport']['sunset']}]}}
 
 
-    # Create input for model
-    model_input_all = model_helper.table_to_floats(data['weatherreport'],
-                                                data['experience'], data['location'],
-                                                model_overrides)
+        # Create input for model
+        model_input_all = model_helper.table_to_floats(data['weatherreport'],
+                                                    data['experience'], data['location'],
+                                                    model_overrides)
 
+        # Convert input to dict of lists (input func will restrict cols)
+        model_input = {model.LABEL_COL: [-1]}
+        for i in range(len(model_input_all)):
+            model_input[model_helper.FEATURE_COLS_ALL[i]] = [model_input_all[i]]
 
-    # Convert input to dict of lists (input func will restrict cols)
-    model_input = {model.LABEL_COL: [-1]}
-    for i in range(len(model_input_all)):
-        model_input[model_helper.FEATURE_COLS_ALL[i]] = [model_input_all[i]]
+    else:
+        model_input = {model.LABEL_COL: [-1]}
+        for col in model_helper.FEATURE_COLS_ALL:
+            model_input[col] = [data[col]]
+
+    print('model_input', model_input)
 
 
     # Load model
@@ -529,10 +549,10 @@ def infer_model_direct(schema_str, stage, data, blend_pct=0, model_overrides=Non
 
 
     # Adds extended values to prediction result
-    prediction_type = None
-    if config.get('prediction_type'):
-        print('Reading prediction_type from config:', config['prediction_type'])
-        prediction_type = config['prediction_type']
+    # prediction_type = None
+    # if config.get('prediction_type'):
+    #     print('Reading prediction_type from config:', config['prediction_type'])
+    #     prediction_type = config['prediction_type']
 
     prediction_json_extended = prediction_extended(prediction_json, schema_obj,
                                                     prediction_type)
