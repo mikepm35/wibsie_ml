@@ -23,6 +23,8 @@ FEATURE_COLS_ALL = [
     'total_clo',
     'humidity',
     'wind_chill',
+    'meanradiant_temp',
+    'uvindex',
     'h_intprod',
     'ed_watvapdiff',
     'esw_sweat',
@@ -44,13 +46,7 @@ INDEX_USERID = 'be1f64e0-6c1d-11e8-b0b9-e3202dfd59eb'
 #################################################################################
 
 def table_to_floats(data_user, data_weatherreport, data_experience, data_location, overrides):
-    """Must output the following order:
-        feature_columns = ['user_id', 'age', 'bmi', 'gender', 'lifestyle', 'loc_type',
-                            'apparent_temperature', 'cloud_cover', 'humidity_temp',
-                            'precip_intensity', 'precip_probability', 'temperature',
-                            'wind_burst', 'wind_speed', 'precip_type', 'activity_met',
-                            'total_clo', 'humidity', 'wind_chill']
-    """
+    """Main function for generating ordered float values for csv training"""
 
     # print(data_weatherreport['raw']['daily']['data'][0]['sunriseTime']) #s
     # print(data_experience['created']) #ms
@@ -172,12 +168,14 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
         else:
             print('Ignoring totalClo override')
 
+    meanradiant_temp = get_meanradianttemp(float(data_weatherreport['uvIndex']), float(data_weatherreport['temperature']))
+
     # get PMV parameters
     pmv_params = getPmvParams({
         'met': activity_to_met(data_experience['activity']),
         'clo': upper_clothing_to_clo(data_experience['upper_clothing'])+lower_clothing_to_clo(data_experience['lower_clothing']),
         'ta_airtmp': float(data_weatherreport['temperature']),
-        'tr_radtmp': float(data_weatherreport['temperature'])+10,
+        'tr_radtmp': meanradiant_temp,
         'var_airvel': float(data_weatherreport['windSpeed']),
         'rel_humidity': float(data_weatherreport['humidity'])*100
     })
@@ -205,7 +203,9 @@ def table_to_floats(data_user, data_weatherreport, data_experience, data_locatio
                 activity_to_met(data_experience['activity']),
                 totalClo,
                 float(data_weatherreport['humidity']),
-                get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed']))
+                get_windchill(float(data_weatherreport['temperature']), float(data_weatherreport['windSpeed'])),
+                meanradiant_temp,
+                float(data_weatherreport['uvIndex'])
             ] + [
                 pmv_params['h_intprod'],
                 pmv_params['ed_watvapdiff'],
@@ -408,6 +408,39 @@ def hash_precip_type(precip_type):
 #################################################################################
 # Model utilities
 #################################################################################
+
+def get_meanradianttemp(uvindex, airtemp):
+    """Calculate mean radiant temperature in F from an approximation for
+    solar radiance calculated via uvindex.  Airtemp provided in F.
+    Max Tmrt practically should be ~60C/140F.
+
+    Tmrt = (Sstr/(ep*omega))^0.25 - 273.15 (C)
+        Sstr = Mean radiant flux density (W/m2)
+        ep = Emissivity of the human, assume const = 0.97 (unitless)
+        omega = Stefan-boltzmann constant = 5.67*10^-8 (W*m2*K^-4)
+
+    Pokhrel, Rudra & Bhattarai, Binod. (2011). Relation between Global Solar Radiation
+    and Solar Ultraviolet Radiation in Different Parts of Nepal. Journal of Institute of Engineering
+
+    uvindex = 8.6*10^-6*solarradiance^2 - 0.0021*solarradiance + 0.22 (unitless)
+        solarradiance = irradiance by pyanometer (W/m2)
+    solarradiance = (0.0021 + sqrt{0.0021^2 - 4*8.6*10^-6*(0.22-uvindex)}) / (2*8.6*10^-6)
+        Set Sstr=solarradiance
+    """
+
+    # If UV index is zero, set equal to air temperature
+    if uvindex == 0:
+        return airtemp
+
+    # Calculate solar radiance
+    solarrad = (0.0021+math.sqrt(0.0021**2-4*8.6*(10**-6)*(0.22-uvindex)))/(2*8.6*(10**-6))
+    solarrad = solarrad * 0.55 # empirical fudge factor
+
+    # Calculate mean radiant temperature
+    temp_mrt = math.pow(solarrad/(0.97*5.67*(10**-8)),0.25) - 273.15
+
+    return temp_mrt*(9/5)+32 #degF
+
 
 def get_sunintensity(cloud_cover, exp_created, weather_raw):
     """Create a sunintensity metric by combining cloudCover and current time

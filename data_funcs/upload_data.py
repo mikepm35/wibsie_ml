@@ -112,7 +112,7 @@ def upload_data(event, context):
         datakey_users[u['id']] = u
 
     # Check to see if should skip uploading data
-    if config.get('upload_skip_mins') and not event.get('ignore_skip'):
+    if config.get('upload_skip_mins') != None and not event.get('ignore_skip'):
         skip_ms = int(config['upload_skip_mins'])*60*1000
         print('Evaluating skip upload for mins, ms: ', config['upload_skip_mins'], skip_ms)
 
@@ -283,7 +283,7 @@ def upload_data(event, context):
 
     # Resample data
     min_sample = 0
-    if config.get('min_sample'):
+    if config.get('min_sample') != None:
         print('Overriding min_sample: ', int(config['min_sample']))
         min_sample = int(config['min_sample'])
 
@@ -293,7 +293,7 @@ def upload_data(event, context):
 
     # Split data
     split = 0.9
-    if config.get('split'):
+    if config.get('split') != None:
         print('Overriding split value with config: ', config['split'])
         split = float(config['split'])
 
