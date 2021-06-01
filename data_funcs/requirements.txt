@@ -20,5 +20,5 @@ sagemaker==1.5.0
 scipy==1.1.0
 six==1.11.0
 termcolor==1.1.0
-urllib3==1.23
+urllib3==1.26.5
 Werkzeug==0.14.1
